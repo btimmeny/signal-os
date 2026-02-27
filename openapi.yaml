@@ -5,8 +5,8 @@ info:
   version: 0.1.0
 
 servers:
-  - url: http://localhost:8300
-    description: Local development
+  - url: https://signal-os-api-production.up.railway.app
+    description: Production
 
 security:
   - ApiKeyAuth: []
@@ -228,6 +228,8 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  db:
+                    type: string
 
   /commitments/open:
     post:
