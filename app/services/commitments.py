@@ -72,7 +72,7 @@ def close_commitment(
 
     if commitment_id:
         c = db.query(Commitment).filter(
-            Commitment.id == commitment_id,
+            Commitment.id == uuid.UUID(commitment_id),
             Commitment.status != CommitmentStatus.CLOSED,
         ).first()
         if c:
@@ -116,7 +116,7 @@ def update_commitment(
 ) -> Optional[Commitment]:
     """Update partial fields on a commitment."""
     c = db.query(Commitment).filter(
-        Commitment.id == commitment_id,
+        Commitment.id == uuid.UUID(commitment_id),
     ).first()
     if not c:
         return None

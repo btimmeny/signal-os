@@ -26,7 +26,7 @@ def create_reminder(
 ) -> Reminder:
     """Schedule a new reminder for a commitment."""
     r = Reminder(
-        commitment_id=commitment_id,
+        commitment_id=uuid.UUID(commitment_id),
         remind_at=remind_at,
         message=message,
         delivery_target=delivery_target,

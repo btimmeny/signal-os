@@ -18,6 +18,9 @@ config = context.config
 # Override sqlalchemy.url from environment if set
 db_url = os.getenv("DATABASE_URL")
 if db_url:
+    # Rewrite to use psycopg v3 driver
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:

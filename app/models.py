@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    Uuid,
 )
 from sqlalchemy.orm import relationship
 
@@ -53,26 +54,26 @@ class Commitment(Base):
     __tablename__ = "commitments"
 
     id = Column(
-        String(36),
+        Uuid,
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        default=uuid.uuid4,
     )
     title = Column(String(512), nullable=False, index=True)
     description = Column(Text, nullable=True)
     status = Column(
-        Enum(CommitmentStatus, name="commitment_status"),
+        Enum(CommitmentStatus, name="commitment_status", values_callable=lambda e: [m.value for m in e]),
         nullable=False,
         default=CommitmentStatus.OPEN,
         index=True,
     )
     urgency = Column(
-        Enum(Urgency, name="urgency"),
+        Enum(Urgency, name="urgency", values_callable=lambda e: [m.value for m in e]),
         nullable=True,
     )
     person = Column(String(256), nullable=True, index=True)
     organization = Column(String(256), nullable=True)
     channel_type = Column(
-        Enum(ChannelType, name="channel_type"),
+        Enum(ChannelType, name="channel_type", values_callable=lambda e: [m.value for m in e]),
         nullable=True,
     )
     channel_title = Column(String(256), nullable=True)
@@ -110,12 +111,12 @@ class Reminder(Base):
     __tablename__ = "reminders"
 
     id = Column(
-        String(36),
+        Uuid,
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        default=uuid.uuid4,
     )
     commitment_id = Column(
-        String(36),
+        Uuid,
         ForeignKey("commitments.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
