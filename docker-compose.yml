@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: signalos
+      POSTGRES_PASSWORD: signalos
+      POSTGRES_DB: signal_os
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signalos -d signal_os"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8300:8300"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://signalos:signalos@postgres:5432/signal_os
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8300"
+
+volumes:
+  pgdata:

@@ -1,0 +1,401 @@
+openapi: 3.1.0
+info:
+  title: Signal OS
+  description: Personal commitment log system — track, query, and get reminded about commitments.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8300
+    description: Local development
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    CommitmentOpenRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 512
+        description:
+          type: string
+          nullable: true
+        person:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        channel_type:
+          type: string
+          enum: [email, slack, meeting, call, text, web, other]
+          nullable: true
+        channel_title:
+          type: string
+          nullable: true
+        channel_link:
+          type: string
+          nullable: true
+        urgency:
+          type: string
+          enum: [NOW, SOON, SCHEDULED, SOMEDAY]
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        source_snippet:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [OPEN, WAITING, SNOOZED, CLOSED]
+          default: OPEN
+
+    CommitmentCloseRequest:
+      type: object
+      properties:
+        commitment_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        person:
+          type: string
+          nullable: true
+
+    CommitmentUpdateRequest:
+      type: object
+      required: [commitment_id]
+      properties:
+        commitment_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [OPEN, WAITING, SNOOZED, CLOSED]
+          nullable: true
+        urgency:
+          type: string
+          enum: [NOW, SOON, SCHEDULED, SOMEDAY]
+          nullable: true
+        person:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        channel_type:
+          type: string
+          enum: [email, slack, meeting, call, text, web, other]
+          nullable: true
+        channel_title:
+          type: string
+          nullable: true
+        channel_link:
+          type: string
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        source_snippet:
+          type: string
+          nullable: true
+
+    Commitment:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [OPEN, WAITING, SNOOZED, CLOSED]
+        urgency:
+          type: string
+          enum: [NOW, SOON, SCHEDULED, SOMEDAY]
+          nullable: true
+        person:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        channel_type:
+          type: string
+          nullable: true
+        channel_title:
+          type: string
+          nullable: true
+        channel_link:
+          type: string
+          nullable: true
+        source_snippet:
+          type: string
+          nullable: true
+        opened_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_touched_at:
+          type: string
+          format: date-time
+        days_open:
+          type: number
+
+    ReminderCreateRequest:
+      type: object
+      required: [commitment_id, remind_at]
+      properties:
+        commitment_id:
+          type: string
+        remind_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+          nullable: true
+        delivery_target:
+          type: string
+          nullable: true
+        delivery_channel:
+          type: string
+          default: whatsapp
+
+    Reminder:
+      type: object
+      properties:
+        id:
+          type: string
+        commitment_id:
+          type: string
+        remind_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        delivery_channel:
+          type: string
+        delivery_target:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /commitments/open:
+    post:
+      operationId: openCommitment
+      summary: Create a new commitment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentOpenRequest"
+      responses:
+        "200":
+          description: Created commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+    get:
+      operationId: listOpenCommitments
+      summary: List all open commitments
+      responses:
+        "200":
+          description: List of open commitments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Commitment"
+
+  /commitments/close:
+    post:
+      operationId: closeCommitment
+      summary: Close a commitment by ID or title match
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentCloseRequest"
+      responses:
+        "200":
+          description: Closed commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+        "409":
+          description: Multiple matches — provide commitment_id
+
+  /commitments/update:
+    post:
+      operationId: updateCommitment
+      summary: Update commitment fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentUpdateRequest"
+      responses:
+        "200":
+          description: Updated commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+
+  /commitments/query:
+    get:
+      operationId: queryCommitments
+      summary: Query commitments with filters
+      parameters:
+        - name: person
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, WAITING, SNOOZED, CLOSED]
+        - name: urgency
+          in: query
+          schema:
+            type: string
+            enum: [NOW, SOON, SCHEDULED, SOMEDAY]
+        - name: channel_type
+          in: query
+          schema:
+            type: string
+        - name: due_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: due_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: opened_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: opened_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: text
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching commitments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Commitment"
+
+  /reminders/create:
+    post:
+      operationId: createReminder
+      summary: Schedule a reminder for a commitment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderCreateRequest"
+      responses:
+        "200":
+          description: Created reminder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+
+  /reminders/due:
+    get:
+      operationId: listDueReminders
+      summary: List reminders that are due and unsent
+      responses:
+        "200":
+          description: Due reminders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reminder"
+
+  /reminders/dispatch_due:
+    post:
+      operationId: dispatchDueReminders
+      summary: Send all due reminders (mock WhatsApp in MVP)
+      responses:
+        "200":
+          description: Dispatched reminders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reminder"
