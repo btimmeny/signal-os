@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -59,8 +60,13 @@ async def api_key_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
-def health():
-    return {"ok": True}
+def health(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"ok": db_ok, "db": "connected" if db_ok else "unreachable"}
 
 
 # ---------------------------------------------------------------------------

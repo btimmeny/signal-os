@@ -6,7 +6,9 @@ from tests.conftest import HEADERS
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    data = r.json()
+    assert data["ok"] is True
+    assert data["db"] == "connected"
 
 
 def test_auth_required(client):
