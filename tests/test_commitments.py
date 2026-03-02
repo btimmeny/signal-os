@@ -243,6 +243,119 @@ def test_query_by_admin_urgency(client):
     assert items[0]["title"] == "Rotate API keys"
 
 
+def test_open_with_priority_order(client):
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Top priority task", "person": "Alice", "priority_order": 1},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["priority_order"] == 1
+    assert data["status"] == "OPEN"
+
+
+def test_set_priority(client):
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Task to prioritize"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+    assert r.json()["priority_order"] is None
+
+    r2 = client.post(
+        "/commitments/set_priority",
+        json={"commitment_id": cid, "priority_order": 1},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["priority_order"] == 1
+
+
+def test_priority_reordering(client):
+    # Create three commitments with priorities 1, 2, 3
+    ids = []
+    for i, title in enumerate(["First", "Second", "Third"], start=1):
+        r = client.post(
+            "/commitments/open",
+            json={"title": title, "priority_order": i},
+            headers=HEADERS,
+        )
+        assert r.status_code == 200
+        ids.append(r.json()["id"])
+
+    # Insert a new commitment at position 2 — should push Second->3, Third->4
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Inserted at 2", "priority_order": 2},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    new_id = r.json()["id"]
+
+    # Check the priority list
+    r2 = client.get("/commitments/priorities", headers=HEADERS)
+    assert r2.status_code == 200
+    items = r2.json()
+    assert len(items) == 4
+    assert items[0]["title"] == "First"
+    assert items[0]["priority_order"] == 1
+    assert items[1]["title"] == "Inserted at 2"
+    assert items[1]["priority_order"] == 2
+    assert items[2]["title"] == "Second"
+    assert items[2]["priority_order"] == 3
+    assert items[3]["title"] == "Third"
+    assert items[3]["priority_order"] == 4
+
+
+def test_list_priorities(client):
+    # Create commitments — some with priority, some without
+    client.post(
+        "/commitments/open",
+        json={"title": "No priority"},
+        headers=HEADERS,
+    )
+    # Create in ascending order so no reordering shifts occur
+    client.post(
+        "/commitments/open",
+        json={"title": "Priority 1", "priority_order": 1},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/open",
+        json={"title": "Priority 2", "priority_order": 2},
+        headers=HEADERS,
+    )
+
+    r = client.get("/commitments/priorities", headers=HEADERS)
+    assert r.status_code == 200
+    items = r.json()
+    # Only commitments with priority_order should appear
+    assert len(items) == 2
+    assert items[0]["title"] == "Priority 1"
+    assert items[0]["priority_order"] == 1
+    assert items[1]["title"] == "Priority 2"
+    assert items[1]["priority_order"] == 2
+
+
+def test_update_priority_order(client):
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Task with priority", "priority_order": 1},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    r2 = client.post(
+        "/commitments/update",
+        json={"commitment_id": cid, "priority_order": 5},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["priority_order"] == 5
+
+
 def test_query_by_text(client):
     client.post(
         "/commitments/open",

@@ -65,6 +65,7 @@ Client (ChatGPT / curl / etc.)
 │  closed_at       TIMESTAMPTZ   NULLABLE           │
 │  due_at          TIMESTAMPTZ   NULLABLE, INDEX   │
 │  last_touched_at TIMESTAMPTZ   NOT NULL           │
+│  priority_order  INTEGER       NULLABLE           │
 ├─────────────────────────────────────────────────┤
 │  1 ───────────────────────── * reminders         │
 └─────────────────────────────────────────────────┘
@@ -221,7 +222,12 @@ Client (ChatGPT / curl / etc.)
          (POST)   (POST)   (POST)     │
          (GET)                         │
              │                         │
-          /query               ┌───────┼───────┐
+       ┌─────┼─────────┐               │
+       │     │         │               │
+    /query /set_priority /priorities   │
+    (GET)   (POST)       (GET)         │
+                                       │
+                               ┌───────┼───────┐
           (GET)                │       │       │
                            /create   /due  /dispatch_due
                            (POST)   (GET)    (POST)

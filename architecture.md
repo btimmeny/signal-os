@@ -58,7 +58,8 @@ signal-os/
 │   └── versions/
 │       ├── 001_initial_schema.py  # Initial migration
 │       ├── 002_add_incident_urgency.py  # Add INCIDENT to urgency enum
-│       └── 003_add_admin_urgency.py    # Add ADMIN to urgency enum
+│       ├── 003_add_admin_urgency.py    # Add ADMIN to urgency enum
+│       └── 004_add_priority_order.py   # Add priority_order column
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py              # Test fixtures (SQLite, TestClient)
@@ -95,6 +96,8 @@ The API layer delegates all business logic to the service layer. Routes are thin
   - `close_commitment()` -- Close by ID or title match (with disambiguation)
   - `update_commitment()` -- Partial field updates
   - `list_open()` -- All non-CLOSED commitments
+  - `set_priority()` -- Set a commitment's priority_order with automatic reordering
+  - `list_priorities()` -- All ranked commitments sorted by priority_order
   - `query_commitments()` -- Filtered search (person, status, urgency, channel, dates, text)
 
 - **`reminders.py`** -- Reminder lifecycle
@@ -141,6 +144,7 @@ Two tables managed by Alembic migrations:
 - Indexed columns: `title`, `status`, `person`, `due_at`
 - Enum types: `commitment_status`, `urgency`, `channel_type`
 - Timestamps: `opened_at`, `closed_at`, `due_at`, `last_touched_at`
+- Additional columns: `priority_order` (nullable integer for explicit ranking)
 
 **`reminders`**
 - Primary key: UUID (server-generated)
@@ -149,7 +153,7 @@ Two tables managed by Alembic migrations:
 
 ### 5.2 Migrations
 
-- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency)
+- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency) -> `004` (add priority_order column)
 - Migrations run automatically on container startup (`alembic upgrade head`)
 - `alembic/env.py` overrides the DB URL from `DATABASE_URL` env var at runtime
 

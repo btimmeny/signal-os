@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     String,
     Text,
     Uuid,
@@ -81,6 +82,7 @@ class Commitment(Base):
     channel_title = Column(String(256), nullable=True)
     channel_link = Column(String(1024), nullable=True)
     source_snippet = Column(Text, nullable=True)
+    priority_order = Column(Integer, nullable=True)
 
     opened_at = Column(
         DateTime(timezone=True),
