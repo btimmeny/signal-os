@@ -42,12 +42,17 @@ signal-os/
 │   ├── __init__.py
 │   ├── main.py                  # FastAPI app, routes, auth middleware
 │   ├── db.py                    # SQLAlchemy engine, session factory, Base
-│   ├── models.py                # ORM models (Commitment, Reminder) + enums
+│   ├── models.py                # ORM models (Commitment, Reminder, Objective, etc.) + enums
 │   ├── schemas.py               # Pydantic request/response schemas + enums
 │   ├── worker.py                # Reminder polling worker (loop or one-shot)
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── commitments.py       # Commitment CRUD + query logic
+│   │   ├── comments.py          # Commitment comment operations
+│   │   ├── objectives.py        # Strategic objective CRUD
+│   │   ├── objective_links.py   # Objective-commitment linking
+│   │   ├── objective_updates.py # Objective general commentary
+│   │   ├── status_reports.py    # Status report CRUD + data gathering
 │   │   └── reminders.py         # Reminder CRUD + dispatch logic
 │   └── integrations/
 │       ├── __init__.py
@@ -60,11 +65,16 @@ signal-os/
 │       ├── 002_add_incident_urgency.py  # Add INCIDENT to urgency enum
 │       ├── 003_add_admin_urgency.py    # Add ADMIN to urgency enum
 │       ├── 004_add_priority_order.py   # Add priority_order column
-│       └── 005_add_commitment_comments.py  # Add commitment_comments table
+│       ├── 005_add_commitment_comments.py  # Add commitment_comments table
+│       ├── 006_add_strategic_objectives.py  # Add strategic_objectives table
+│       ├── 007_add_objective_commitment_links.py  # Add linking table
+│       ├── 008_add_objective_updates.py     # Add objective_updates table
+│       └── 009_add_status_reports.py        # Add status_reports table
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py              # Test fixtures (SQLite, TestClient)
 │   ├── test_commitments.py      # Commitment endpoint tests
+│   ├── test_objectives.py       # Objective, linking, updates, status tests
 │   └── test_reminders.py        # Reminder endpoint tests
 ├── alembic.ini                  # Alembic configuration
 ├── docker-compose.yml           # Local dev environment (Postgres + API)
@@ -105,6 +115,28 @@ The API layer delegates all business logic to the service layer. Routes are thin
   - `add_comment()` -- Add a timestamped comment to a commitment
   - `list_comments()` -- List all comments for a commitment, ordered oldest first
 
+- **`objectives.py`** -- Strategic objective CRUD
+  - `create_objective()` -- Create a new objective with title, year, status
+  - `update_objective()` -- Update any subset of objective fields
+  - `get_objective()` -- Get a single objective by ID
+  - `list_objectives()` -- List objectives with optional year/status filters
+
+- **`objective_links.py`** -- Objective-commitment linking
+  - `link_commitment()` -- Link a commitment to an objective (idempotent)
+  - `unlink_commitment()` -- Remove a link
+  - `list_links_for_objective()` -- All commitments linked to an objective
+  - `list_links_for_commitment()` -- All objectives linked to a commitment
+
+- **`objective_updates.py`** -- Objective general commentary
+  - `add_update()` -- Add a timestamped update to an objective
+  - `list_updates()` -- List all updates for an objective, ordered oldest first
+
+- **`status_reports.py`** -- Status report lifecycle
+  - `create_report()` -- Store a status report with period type and body
+  - `list_reports()` -- List reports with optional period type filter
+  - `get_report()` -- Get a single report by ID
+  - `gather_status_data()` -- Aggregate objectives, linked commitments, comments, updates, and commitment activity for a period
+
 - **`reminders.py`** -- Reminder lifecycle
   - `create_reminder()` -- Schedule a new reminder
   - `get_due_reminders()` -- Find all due, unsent reminders
@@ -119,10 +151,17 @@ The service layer contains all business logic and directly interacts with SQLAlc
 - **Models:**
   - `Commitment` -- Primary entity with status/urgency/channel enums, timestamps, and person/org metadata
   - `CommitmentComment` -- Timestamped note linked to a commitment for tracking history
+  - `StrategicObjective` -- Annual goal with title, year, and status
+  - `ObjectiveCommitmentLink` -- Junction table linking objectives to commitments with rationale
+  - `ObjectiveUpdate` -- General commentary on an objective
+  - `StatusReport` -- Stored status report artifact with period type and body
   - `Reminder` -- Linked to `Commitment` via foreign key with cascade delete
 - **Relationships:**
   - `Commitment.reminders` (one-to-many, joined eager loading, cascade delete-orphan)
   - `Commitment.comments` (one-to-many, select loading, cascade delete-orphan, ordered by created_at)
+  - `Commitment.objective_links` (one-to-many, select loading, cascade delete-orphan)
+  - `StrategicObjective.commitment_links` (one-to-many, select loading, cascade delete-orphan)
+  - `StrategicObjective.updates` (one-to-many, select loading, cascade delete-orphan, ordered by created_at)
 
 ### 3.4 Integration Layer (`app/integrations/`)
 
@@ -145,7 +184,7 @@ This is a single-tenant, single-key model suitable for agent-to-API communicatio
 
 ### 5.1 Schema
 
-Three tables managed by Alembic migrations:
+Seven tables managed by Alembic migrations:
 
 **`commitments`**
 - Primary key: UUID (server-generated via `gen_random_uuid()`)
@@ -160,6 +199,30 @@ Three tables managed by Alembic migrations:
 - Indexed columns: `commitment_id`
 - Columns: `body` (text, not null), `author` (varchar, nullable), `created_at` (timestamptz, not null)
 
+**`strategic_objectives`**
+- Primary key: UUID (server-generated)
+- Indexed columns: `title`, `year`
+- Enum types: `objective_status` (ACTIVE, COMPLETED, DEFERRED, CANCELLED)
+- Timestamps: `created_at`, `updated_at`
+
+**`objective_commitment_links`**
+- Primary key: UUID (server-generated)
+- Foreign keys: `objective_id` -> `strategic_objectives.id` CASCADE, `commitment_id` -> `commitments.id` CASCADE
+- Unique constraint: `(objective_id, commitment_id)`
+- Columns: `rationale` (text, nullable), `created_at` (timestamptz)
+
+**`objective_updates`**
+- Primary key: UUID (server-generated)
+- Foreign key: `objective_id` references `strategic_objectives.id` with `ON DELETE CASCADE`
+- Indexed columns: `objective_id`
+- Columns: `body` (text, not null), `author` (varchar, nullable), `created_at` (timestamptz)
+
+**`status_reports`**
+- Primary key: UUID (server-generated)
+- Indexed columns: `period_type`
+- Enum types: `report_period` (WEEKLY, MONTHLY, QUARTERLY, ANNUAL)
+- Columns: `period_start`, `period_end` (timestamptz), `body` (text, not null), `created_at` (timestamptz)
+
 **`reminders`**
 - Primary key: UUID (server-generated)
 - Foreign key: `commitment_id` references `commitments.id` with `ON DELETE CASCADE`
@@ -167,7 +230,7 @@ Three tables managed by Alembic migrations:
 
 ### 5.2 Migrations
 
-- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency) -> `004` (add priority_order column) -> `005` (add commitment_comments table)
+- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency) -> `004` (add priority_order column) -> `005` (add commitment_comments table) -> `006` (add strategic_objectives) -> `007` (add objective_commitment_links) -> `008` (add objective_updates) -> `009` (add status_reports)
 - Migrations run automatically on container startup (`alembic upgrade head`)
 - `alembic/env.py` overrides the DB URL from `DATABASE_URL` env var at runtime
 
@@ -212,7 +275,7 @@ Docker Compose provides:
   - `db_session` -- Creates/drops tables per test function
   - `client` -- FastAPI `TestClient` wired to the test DB session via dependency override
 - **Auth:** Tests use `X-API-Key: test-key` (set via env var in `conftest.py`)
-- **Coverage:** 9 commitment tests, 3 reminder tests covering CRUD, edge cases (409 disambiguation), and dispatch lifecycle
+- **Coverage:** 32 commitment tests, 21 objective/status tests, 3 reminder tests covering CRUD, linking, updates, status data gathering, edge cases, and dispatch lifecycle
 
 ## 9. Dependencies
 

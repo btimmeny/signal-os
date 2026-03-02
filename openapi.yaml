@@ -224,6 +224,177 @@ components:
           type: string
           format: date-time
 
+    ObjectiveCreateRequest:
+      type: object
+      required: [title, year]
+      properties:
+        title:
+          type: string
+          maxLength: 512
+        description:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          minimum: 2000
+          maximum: 2100
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          default: ACTIVE
+
+    ObjectiveUpdateRequest:
+      type: object
+      required: [objective_id]
+      properties:
+        objective_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          nullable: true
+
+    Objective:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        year:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ObjectiveLinkRequest:
+      type: object
+      required: [objective_id, commitment_id]
+      properties:
+        objective_id:
+          type: string
+        commitment_id:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+          description: Why this action supports this objective
+
+    ObjectiveLink:
+      type: object
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        commitment_id:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ObjectiveUpdateCreateRequest:
+      type: object
+      required: [objective_id, body]
+      properties:
+        objective_id:
+          type: string
+        body:
+          type: string
+          minLength: 1
+          description: General update or commentary on the objective
+        author:
+          type: string
+          nullable: true
+
+    ObjectiveUpdateNote:
+      type: object
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        body:
+          type: string
+        author:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    StatusReportCreateRequest:
+      type: object
+      required: [period_type, period_start, period_end, body]
+      properties:
+        period_type:
+          type: string
+          enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        body:
+          type: string
+          minLength: 1
+
+    StatusReport:
+      type: object
+      properties:
+        id:
+          type: string
+        period_type:
+          type: string
+          enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    StatusDataRequest:
+      type: object
+      required: [period_type, period_start, period_end]
+      properties:
+        period_type:
+          type: string
+          enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+
     ReminderCreateRequest:
       type: object
       required: [commitment_id, remind_at]
@@ -498,6 +669,324 @@ paths:
                   $ref: "#/components/schemas/Comment"
         "404":
           description: Commitment not found
+
+  /commitments/objectives:
+    get:
+      operationId: listObjectivesForCommitment
+      summary: List all objectives linked to a commitment
+      parameters:
+        - name: commitment_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of objective links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveLink"
+        "404":
+          description: Commitment not found
+
+  /objectives/create:
+    post:
+      operationId: createObjective
+      summary: Create a new strategic objective
+      description: >
+        Creates a strategic objective for a given year. Objectives
+        represent annual goals that commitments (action items) drive
+        toward.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveCreateRequest"
+      responses:
+        "200":
+          description: Created objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+
+  /objectives/update:
+    post:
+      operationId: updateObjective
+      summary: Update an objective's fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveUpdateRequest"
+      responses:
+        "200":
+          description: Updated objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+        "404":
+          description: Objective not found
+
+  /objectives/list:
+    get:
+      operationId: listObjectives
+      summary: List strategic objectives
+      description: >
+        Returns objectives optionally filtered by year and/or status.
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+      responses:
+        "200":
+          description: List of objectives
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Objective"
+
+  /objectives/get:
+    get:
+      operationId: getObjective
+      summary: Get a single objective by ID
+      parameters:
+        - name: objective_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+        "404":
+          description: Objective not found
+
+  /objectives/link:
+    post:
+      operationId: linkCommitmentToObjective
+      summary: Link a commitment (action item) to a strategic objective
+      description: >
+        Creates a link between a commitment and an objective, recording
+        why this action supports the strategic goal. Idempotent — relinking
+        updates the rationale.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveLinkRequest"
+      responses:
+        "200":
+          description: Created or updated link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectiveLink"
+        "404":
+          description: Objective or commitment not found
+
+  /objectives/unlink:
+    post:
+      operationId: unlinkCommitmentFromObjective
+      summary: Remove the link between a commitment and an objective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveLinkRequest"
+      responses:
+        "200":
+          description: Link removed
+        "404":
+          description: Link not found
+
+  /objectives/links:
+    get:
+      operationId: listLinksForObjective
+      summary: List all commitments linked to an objective
+      parameters:
+        - name: objective_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of commitment links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveLink"
+        "404":
+          description: Objective not found
+
+  /objectives/update_note:
+    post:
+      operationId: addObjectiveUpdate
+      summary: Add general commentary/update to an objective
+      description: >
+        Adds a timestamped update note to an objective. Use this for
+        general commentary not tied to a specific task, like meeting
+        notes, market changes, or strategic observations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveUpdateCreateRequest"
+      responses:
+        "200":
+          description: Created update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectiveUpdateNote"
+        "404":
+          description: Objective not found
+
+  /objectives/updates:
+    get:
+      operationId: listObjectiveUpdates
+      summary: List all updates for an objective
+      parameters:
+        - name: objective_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of updates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveUpdateNote"
+        "404":
+          description: Objective not found
+
+  /status/report:
+    post:
+      operationId: createStatusReport
+      summary: Store a status report
+      description: >
+        Saves a generated status report (weekly, monthly, quarterly,
+        or annual) with the body text. The body is typically composed
+        by the AI from gathered status data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusReportCreateRequest"
+      responses:
+        "200":
+          description: Created report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusReport"
+    get:
+      operationId: getStatusReport
+      summary: Get a single status report by ID
+      parameters:
+        - name: report_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusReport"
+        "404":
+          description: Report not found
+
+  /status/reports:
+    get:
+      operationId: listStatusReports
+      summary: List status reports
+      parameters:
+        - name: period_type
+          in: query
+          schema:
+            type: string
+            enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusReport"
+
+  /status/data:
+    post:
+      operationId: gatherStatusData
+      summary: Gather all data needed to produce a status report
+      description: >
+        Returns structured data for a time period: objectives with
+        linked commitments and their comments, objective updates,
+        and commitment activity (opened/closed). Use this to compose
+        a weekly, monthly, quarterly, or annual status narrative.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusDataRequest"
+      responses:
+        "200":
+          description: Aggregated status data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period_start:
+                    type: string
+                  period_end:
+                    type: string
+                  objectives:
+                    type: array
+                    items:
+                      type: object
+                  commitments_opened:
+                    type: array
+                    items:
+                      type: object
+                  commitments_closed:
+                    type: array
+                    items:
+                      type: object
 
   /reminders/create:
     post:

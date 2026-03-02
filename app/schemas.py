@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +166,162 @@ class CommentResponse(BaseModel):
             author=obj.author,
             created_at=obj.created_at,
         )
+
+
+# ---------------------------------------------------------------------------
+# Strategic Objective schemas
+# ---------------------------------------------------------------------------
+
+class ObjectiveStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
+class ReportPeriod(str, Enum):
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    ANNUAL = "ANNUAL"
+
+
+class ObjectiveCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=512)
+    description: Optional[str] = None
+    year: int = Field(..., ge=2000, le=2100)
+    status: ObjectiveStatus = ObjectiveStatus.ACTIVE
+
+
+class ObjectiveUpdateRequest(BaseModel):
+    objective_id: str
+    title: Optional[str] = Field(None, min_length=1, max_length=512)
+    description: Optional[str] = None
+    year: Optional[int] = Field(None, ge=2000, le=2100)
+    status: Optional[ObjectiveStatus] = None
+
+
+class ObjectiveResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    year: int
+    status: ObjectiveStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ObjectiveResponse":
+        return cls(
+            id=str(obj.id),
+            title=obj.title,
+            description=obj.description,
+            year=obj.year,
+            status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            created_at=obj.created_at,
+            updated_at=obj.updated_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Objective-Commitment Link schemas
+# ---------------------------------------------------------------------------
+
+class ObjectiveLinkRequest(BaseModel):
+    objective_id: str
+    commitment_id: str
+    rationale: Optional[str] = None
+
+
+class ObjectiveLinkResponse(BaseModel):
+    id: str
+    objective_id: str
+    commitment_id: str
+    rationale: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ObjectiveLinkResponse":
+        return cls(
+            id=str(obj.id),
+            objective_id=str(obj.objective_id),
+            commitment_id=str(obj.commitment_id),
+            rationale=obj.rationale,
+            created_at=obj.created_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Objective Update schemas
+# ---------------------------------------------------------------------------
+
+class ObjectiveUpdateCreateRequest(BaseModel):
+    objective_id: str
+    body: str = Field(..., min_length=1)
+    author: Optional[str] = None
+
+
+class ObjectiveUpdateResponse(BaseModel):
+    id: str
+    objective_id: str
+    body: str
+    author: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ObjectiveUpdateResponse":
+        return cls(
+            id=str(obj.id),
+            objective_id=str(obj.objective_id),
+            body=obj.body,
+            author=obj.author,
+            created_at=obj.created_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Status Report schemas
+# ---------------------------------------------------------------------------
+
+class StatusReportCreateRequest(BaseModel):
+    period_type: ReportPeriod
+    period_start: datetime
+    period_end: datetime
+    body: str = Field(..., min_length=1)
+
+
+class StatusReportResponse(BaseModel):
+    id: str
+    period_type: ReportPeriod
+    period_start: datetime
+    period_end: datetime
+    body: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "StatusReportResponse":
+        return cls(
+            id=str(obj.id),
+            period_type=obj.period_type.value if hasattr(obj.period_type, "value") else obj.period_type,
+            period_start=obj.period_start,
+            period_end=obj.period_end,
+            body=obj.body,
+            created_at=obj.created_at,
+        )
+
+
+class StatusDataRequest(BaseModel):
+    period_type: ReportPeriod
+    period_start: datetime
+    period_end: datetime
 
 
 # ---------------------------------------------------------------------------

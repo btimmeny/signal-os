@@ -74,7 +74,64 @@ A comment is a timestamped note attached to a commitment. Comments capture statu
 - **SOMEDAY** -- No time pressure
 - **ADMIN** -- Get it done when you can (lowest priority)
 
-### 4.4 Reminder
+### 4.4 Strategic Objective
+
+A strategic objective is an annual goal that commitments (action items) drive toward. Objectives provide the "why" behind individual tasks.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | UUID | Auto-generated | Unique identifier |
+| `title` | String (max 512) | Yes | Short description of the objective |
+| `description` | Text | No | Longer context or details |
+| `year` | Integer | Yes | The year this objective applies to |
+| `status` | Enum | Yes (default: ACTIVE) | ACTIVE, COMPLETED, DEFERRED, CANCELLED |
+| `created_at` | Timestamp | Yes (auto) | When the objective was created |
+| `updated_at` | Timestamp | Yes (auto) | Last modification time |
+
+**Objective statuses:**
+- **ACTIVE** -- Currently being pursued
+- **COMPLETED** -- Successfully achieved
+- **DEFERRED** -- Postponed to a future period
+- **CANCELLED** -- No longer relevant
+
+### 4.5 Objective-Commitment Link
+
+A link connects a commitment (action item) to a strategic objective, recording why this action supports the goal.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | UUID | Auto-generated | Unique identifier |
+| `objective_id` | UUID (FK) | Yes | The strategic objective |
+| `commitment_id` | UUID (FK) | Yes | The action item |
+| `rationale` | Text | No | Why this action drives this objective |
+| `created_at` | Timestamp | Yes (auto) | When the link was created |
+
+### 4.6 Objective Update
+
+An update is general commentary on an objective, not tied to a specific task. Used for meeting notes, market observations, strategic shifts, etc.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | UUID | Auto-generated | Unique identifier |
+| `objective_id` | UUID (FK) | Yes | The objective this update is about |
+| `body` | Text | Yes | The update content |
+| `author` | String | No | Who wrote the update |
+| `created_at` | Timestamp | Yes (auto) | When the update was created |
+
+### 4.7 Status Report
+
+A status report is a stored artifact summarizing progress for a time period (weekly, monthly, quarterly, annual).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | UUID | Auto-generated | Unique identifier |
+| `period_type` | Enum | Yes | WEEKLY, MONTHLY, QUARTERLY, ANNUAL |
+| `period_start` | Timestamp | Yes | Start of the reporting period |
+| `period_end` | Timestamp | Yes | End of the reporting period |
+| `body` | Text | Yes | The report content |
+| `created_at` | Timestamp | Yes (auto) | When the report was created |
+
+### 4.8 Reminder
 
 A reminder is a scheduled notification tied to a commitment. When the reminder time arrives, the system dispatches a message via the configured delivery channel.
 
@@ -107,7 +164,41 @@ A reminder is a scheduled notification tied to a commitment. When the reminder t
 | FR-18 | Add a timestamped comment to a commitment with optional author | Implemented |
 | FR-19 | List all comments for a commitment, ordered oldest to newest | Implemented |
 
-### 5.2 Reminder Management
+### 5.2 Strategic Objectives
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| FR-20 | Create a strategic objective with title, year, optional description and status | Implemented |
+| FR-21 | Update an objective's title, description, year, or status | Implemented |
+| FR-22 | Get a single objective by ID | Implemented |
+| FR-23 | List objectives with optional year and status filters | Implemented |
+
+### 5.3 Objective-Commitment Linking
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| FR-24 | Link a commitment to an objective with optional rationale (idempotent) | Implemented |
+| FR-25 | Unlink a commitment from an objective | Implemented |
+| FR-26 | List all commitments linked to an objective | Implemented |
+| FR-27 | List all objectives linked to a commitment | Implemented |
+
+### 5.4 Objective Updates
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| FR-28 | Add a general commentary update to an objective | Implemented |
+| FR-29 | List all updates for an objective, ordered oldest first | Implemented |
+
+### 5.5 Status Reports
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| FR-30 | Create a status report with period type, date range, and body | Implemented |
+| FR-31 | List status reports with optional period type filter | Implemented |
+| FR-32 | Get a single status report by ID | Implemented |
+| FR-33 | Gather aggregated status data for a period (objectives, linked commitments with comments, objective updates, commitment activity) | Implemented |
+
+### 5.6 Reminder Management
 
 | ID | Requirement | Status |
 |----|-------------|--------|
@@ -157,6 +248,20 @@ A reminder is a scheduled notification tied to a commitment. When the reminder t
 | GET | `/commitments/priorities` | List all open commitments ranked by priority |
 | POST | `/commitments/comment` | Add a comment to a commitment |
 | GET | `/commitments/comments` | List all comments for a commitment |
+| GET | `/commitments/objectives` | List all objectives linked to a commitment |
+| POST | `/objectives/create` | Create a strategic objective |
+| POST | `/objectives/update` | Update an objective's fields |
+| GET | `/objectives/list` | List objectives (filter by year/status) |
+| GET | `/objectives/get` | Get a single objective by ID |
+| POST | `/objectives/link` | Link a commitment to an objective |
+| POST | `/objectives/unlink` | Unlink a commitment from an objective |
+| GET | `/objectives/links` | List commitments linked to an objective |
+| POST | `/objectives/update_note` | Add general commentary to an objective |
+| GET | `/objectives/updates` | List all updates for an objective |
+| POST | `/status/report` | Create a status report |
+| GET | `/status/report` | Get a single status report by ID |
+| GET | `/status/reports` | List status reports (filter by period) |
+| POST | `/status/data` | Gather aggregated status data for a period |
 | POST | `/reminders/create` | Schedule a reminder |
 | GET | `/reminders/due` | List due unsent reminders |
 | POST | `/reminders/dispatch_due` | Dispatch all due reminders |
@@ -192,6 +297,7 @@ The current WhatsApp integration is a mock that logs messages to the console. Th
 - Multi-user / multi-tenant support
 - Recurring reminders
 - Commitment tagging and categorization
+- AI-generated status report narratives from gathered status data
 - Analytics and reporting (commitments per person, average days open, etc.)
 - Webhook support for external event triggers
 - Rate limiting and API key rotation
