@@ -15,6 +15,43 @@ from app.models import Commitment, CommitmentStatus, ChannelType, Urgency
 logger = logging.getLogger(__name__)
 
 
+def _reorder_priorities(db: Session, target_position: int, exclude_id=None) -> None:
+    """Shift existing priority_order values to make room at target_position.
+
+    All non-CLOSED commitments with priority_order >= target_position are
+    incremented by 1.  The optional *exclude_id* lets us skip the commitment
+    that is being moved into that slot.
+    """
+    q = (
+        db.query(Commitment)
+        .filter(
+            Commitment.status != CommitmentStatus.CLOSED,
+            Commitment.priority_order.isnot(None),
+            Commitment.priority_order >= target_position,
+        )
+    )
+    if exclude_id is not None:
+        q = q.filter(Commitment.id != exclude_id)
+
+    for c in q.order_by(Commitment.priority_order.desc()).all():
+        c.priority_order = c.priority_order + 1
+
+
+def _compact_priorities(db: Session) -> None:
+    """Re-number priority_order values to be contiguous starting from 1."""
+    rows = (
+        db.query(Commitment)
+        .filter(
+            Commitment.status != CommitmentStatus.CLOSED,
+            Commitment.priority_order.isnot(None),
+        )
+        .order_by(Commitment.priority_order.asc())
+        .all()
+    )
+    for idx, c in enumerate(rows, start=1):
+        c.priority_order = idx
+
+
 def open_commitment(
     db: Session,
     *,
@@ -29,9 +66,15 @@ def open_commitment(
     due_at: Optional[datetime] = None,
     source_snippet: Optional[str] = None,
     status: str = "OPEN",
+    priority_order: Optional[int] = None,
 ) -> Commitment:
     """Create a new commitment."""
     now = datetime.now(timezone.utc)
+
+    # If a priority_order is specified, shift existing items to make room
+    if priority_order is not None:
+        _reorder_priorities(db, priority_order)
+
     c = Commitment(
         title=title,
         description=description,
@@ -44,6 +87,7 @@ def open_commitment(
         due_at=due_at,
         source_snippet=source_snippet,
         status=CommitmentStatus(status),
+        priority_order=priority_order,
         opened_at=now,
         last_touched_at=now,
     )
@@ -132,6 +176,8 @@ def update_commitment(
             value = Urgency(value)
         elif key == "channel_type":
             value = ChannelType(value)
+        elif key == "priority_order":
+            _reorder_priorities(db, value, exclude_id=c.id)
         setattr(c, key, value)
 
     c.last_touched_at = datetime.now(timezone.utc)
@@ -141,12 +187,49 @@ def update_commitment(
     return c
 
 
+def set_priority(
+    db: Session,
+    *,
+    commitment_id: str,
+    priority_order: int,
+) -> Optional[Commitment]:
+    """Set a commitment's priority_order, shifting others as needed."""
+    c = db.query(Commitment).filter(
+        Commitment.id == uuid.UUID(commitment_id),
+    ).first()
+    if not c:
+        return None
+
+    _reorder_priorities(db, priority_order, exclude_id=c.id)
+    c.priority_order = priority_order
+    c.last_touched_at = datetime.now(timezone.utc)
+    db.commit()
+    _compact_priorities(db)
+    db.commit()
+    db.refresh(c)
+    logger.info("Set commitment %s priority to %d", c.id, priority_order)
+    return c
+
+
 def list_open(db: Session) -> list[Commitment]:
     """Return all non-CLOSED commitments, oldest opened first."""
     return (
         db.query(Commitment)
         .filter(Commitment.status != CommitmentStatus.CLOSED)
         .order_by(Commitment.opened_at.asc())
+        .all()
+    )
+
+
+def list_priorities(db: Session) -> list[Commitment]:
+    """Return all non-CLOSED commitments that have a priority_order, sorted by rank."""
+    return (
+        db.query(Commitment)
+        .filter(
+            Commitment.status != CommitmentStatus.CLOSED,
+            Commitment.priority_order.isnot(None),
+        )
+        .order_by(Commitment.priority_order.asc())
         .all()
     )
 

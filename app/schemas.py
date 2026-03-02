@@ -55,6 +55,7 @@ class CommitmentOpenRequest(BaseModel):
     urgency: Optional[Urgency] = None
     due_at: Optional[datetime] = None
     source_snippet: Optional[str] = None
+    priority_order: Optional[int] = None
     status: CommitmentStatus = CommitmentStatus.OPEN
 
 
@@ -77,6 +78,12 @@ class CommitmentUpdateRequest(BaseModel):
     channel_link: Optional[str] = None
     due_at: Optional[datetime] = None
     source_snippet: Optional[str] = None
+    priority_order: Optional[int] = None
+
+
+class CommitmentSetPriorityRequest(BaseModel):
+    commitment_id: str
+    priority_order: int = Field(..., ge=1, description="Target position in the priority list (1 = top)")
 
 
 class CommitmentResponse(BaseModel):
@@ -91,6 +98,7 @@ class CommitmentResponse(BaseModel):
     channel_title: Optional[str] = None
     channel_link: Optional[str] = None
     source_snippet: Optional[str] = None
+    priority_order: Optional[int] = None
     opened_at: datetime
     closed_at: Optional[datetime] = None
     due_at: Optional[datetime] = None
@@ -121,6 +129,7 @@ class CommitmentResponse(BaseModel):
             channel_title=obj.channel_title,
             channel_link=obj.channel_link,
             source_snippet=obj.source_snippet,
+            priority_order=obj.priority_order,
             opened_at=obj.opened_at,
             closed_at=obj.closed_at,
             due_at=obj.due_at,

@@ -17,6 +17,7 @@ from app.schemas import (
     CommitmentCloseRequest,
     CommitmentOpenRequest,
     CommitmentResponse,
+    CommitmentSetPriorityRequest,
     CommitmentUpdateRequest,
     ReminderCreateRequest,
     ReminderResponse,
@@ -88,6 +89,7 @@ def commitments_open(body: CommitmentOpenRequest, db: Session = Depends(get_db))
         due_at=body.due_at,
         source_snippet=body.source_snippet,
         status=body.status.value,
+        priority_order=body.priority_order,
     )
     return CommitmentResponse.from_orm_with_days(c)
 
@@ -164,6 +166,28 @@ def commitments_query(
         opened_after=opened_after,
         text=text,
     )
+    return [CommitmentResponse.from_orm_with_days(c) for c in rows]
+
+
+# ---------------------------------------------------------------------------
+# Priority ordering
+# ---------------------------------------------------------------------------
+
+@app.post("/commitments/set_priority", response_model=CommitmentResponse)
+def commitments_set_priority(body: CommitmentSetPriorityRequest, db: Session = Depends(get_db)):
+    c = commitment_svc.set_priority(
+        db,
+        commitment_id=body.commitment_id,
+        priority_order=body.priority_order,
+    )
+    if not c:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+    return CommitmentResponse.from_orm_with_days(c)
+
+
+@app.get("/commitments/priorities", response_model=list[CommitmentResponse])
+def commitments_priorities(db: Session = Depends(get_db)):
+    rows = commitment_svc.list_priorities(db)
     return [CommitmentResponse.from_orm_with_days(c) for c in rows]
 
 

@@ -56,6 +56,10 @@ components:
         source_snippet:
           type: string
           nullable: true
+        priority_order:
+          type: integer
+          nullable: true
+          description: Position in the overall priority list (1 = top priority)
         status:
           type: string
           enum: [OPEN, WAITING, SNOOZED, CLOSED]
@@ -117,6 +121,21 @@ components:
         source_snippet:
           type: string
           nullable: true
+        priority_order:
+          type: integer
+          nullable: true
+          description: Position in the overall priority list (1 = top priority)
+
+    CommitmentSetPriorityRequest:
+      type: object
+      required: [commitment_id, priority_order]
+      properties:
+        commitment_id:
+          type: string
+        priority_order:
+          type: integer
+          minimum: 1
+          description: Target position in the priority list (1 = top priority)
 
     Commitment:
       type: object
@@ -167,6 +186,10 @@ components:
         last_touched_at:
           type: string
           format: date-time
+        priority_order:
+          type: integer
+          nullable: true
+          description: Position in the overall priority list (1 = top priority)
         days_open:
           type: number
 
@@ -349,6 +372,45 @@ paths:
       responses:
         "200":
           description: Matching commitments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Commitment"
+
+  /commitments/set_priority:
+    post:
+      operationId: setCommitmentPriority
+      summary: Set a commitment's position in the overall priority list
+      description: >
+        Assigns a priority_order to a commitment (1 = top priority).
+        Other commitments are automatically shifted to maintain a
+        contiguous ranking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentSetPriorityRequest"
+      responses:
+        "200":
+          description: Updated commitment with new priority
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+
+  /commitments/priorities:
+    get:
+      operationId: listPriorities
+      summary: List all open commitments ranked by priority order
+      description: >
+        Returns all non-CLOSED commitments that have a priority_order,
+        sorted from highest priority (1) to lowest.
+      responses:
+        "200":
+          description: Priority-ordered list of commitments
           content:
             application/json:
               schema:
