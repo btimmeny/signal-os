@@ -27,6 +27,7 @@ class Urgency(str, Enum):
     SOON = "SOON"
     SCHEDULED = "SCHEDULED"
     SOMEDAY = "SOMEDAY"
+    ADMIN = "ADMIN"
 
 
 class ChannelType(str, Enum):

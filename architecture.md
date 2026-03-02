@@ -57,7 +57,8 @@ signal-os/
 │   ├── script.py.mako           # Migration template
 │   └── versions/
 │       ├── 001_initial_schema.py  # Initial migration
-│       └── 002_add_incident_urgency.py  # Add INCIDENT to urgency enum
+│       ├── 002_add_incident_urgency.py  # Add INCIDENT to urgency enum
+│       └── 003_add_admin_urgency.py    # Add ADMIN to urgency enum
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py              # Test fixtures (SQLite, TestClient)
@@ -148,7 +149,7 @@ Two tables managed by Alembic migrations:
 
 ### 5.2 Migrations
 
-- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency)
+- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency)
 - Migrations run automatically on container startup (`alembic upgrade head`)
 - `alembic/env.py` overrides the DB URL from `DATABASE_URL` env var at runtime
 

@@ -194,6 +194,55 @@ def test_query_by_incident_urgency(client):
     assert items[0]["title"] == "Prod outage"
 
 
+def test_open_with_admin_urgency(client):
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Update docs", "person": "Self", "urgency": "ADMIN"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["urgency"] == "ADMIN"
+    assert data["status"] == "OPEN"
+
+
+def test_update_urgency_to_admin(client):
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Cleanup logs"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    r2 = client.post(
+        "/commitments/update",
+        json={"commitment_id": cid, "urgency": "ADMIN"},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["urgency"] == "ADMIN"
+
+
+def test_query_by_admin_urgency(client):
+    client.post(
+        "/commitments/open",
+        json={"title": "Rotate API keys", "urgency": "ADMIN"},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/open",
+        json={"title": "Ship feature", "urgency": "NOW"},
+        headers=HEADERS,
+    )
+
+    r = client.get("/commitments/query?urgency=ADMIN", headers=HEADERS)
+    assert r.status_code == 200
+    items = r.json()
+    assert len(items) == 1
+    assert items[0]["urgency"] == "ADMIN"
+    assert items[0]["title"] == "Rotate API keys"
+
+
 def test_query_by_text(client):
     client.post(
         "/commitments/open",
