@@ -578,8 +578,8 @@ def test_comments_empty_for_new_commitment(client):
     assert r2.json() == []
 
 
-def test_comments_deleted_with_commitment(client):
-    """Comments should be deleted when the parent commitment is closed."""
+def test_comments_persist_after_close(client):
+    """Comments should persist after closing the parent commitment."""
     r = client.post(
         "/commitments/open",
         json={"title": "Task to close with comments"},

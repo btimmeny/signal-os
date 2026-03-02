@@ -9,7 +9,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Commitment, CommitmentComment, CommitmentStatus
+from app.models import Commitment, CommitmentComment
 
 logger = logging.getLogger(__name__)
 
