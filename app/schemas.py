@@ -55,7 +55,7 @@ class CommitmentOpenRequest(BaseModel):
     urgency: Optional[Urgency] = None
     due_at: Optional[datetime] = None
     source_snippet: Optional[str] = None
-    priority_order: Optional[int] = None
+    priority_order: Optional[int] = Field(None, ge=1)
     status: CommitmentStatus = CommitmentStatus.OPEN
 
 
@@ -78,7 +78,7 @@ class CommitmentUpdateRequest(BaseModel):
     channel_link: Optional[str] = None
     due_at: Optional[datetime] = None
     source_snippet: Optional[str] = None
-    priority_order: Optional[int] = None
+    priority_order: Optional[int] = Field(None, ge=1)
 
 
 class CommitmentSetPriorityRequest(BaseModel):

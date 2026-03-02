@@ -74,6 +74,8 @@ def open_commitment(
     # If a priority_order is specified, shift existing items to make room
     if priority_order is not None:
         _reorder_priorities(db, priority_order)
+        # Compact after insert to ensure contiguous numbering
+        db.flush()
 
     c = Commitment(
         title=title,
@@ -93,6 +95,9 @@ def open_commitment(
     )
     db.add(c)
     db.commit()
+    if priority_order is not None:
+        _compact_priorities(db)
+        db.commit()
     db.refresh(c)
     logger.info("Opened commitment %s: %s", c.id, c.title)
     return c
@@ -177,10 +182,46 @@ def update_commitment(
         elif key == "channel_type":
             value = ChannelType(value)
         elif key == "priority_order":
-            _reorder_priorities(db, value, exclude_id=c.id)
+            old_pos = c.priority_order
+            new_pos = value
+            if old_pos is None:
+                _reorder_priorities(db, new_pos, exclude_id=c.id)
+            elif old_pos != new_pos:
+                if new_pos < old_pos:
+                    shift_q = (
+                        db.query(Commitment)
+                        .filter(
+                            Commitment.status != CommitmentStatus.CLOSED,
+                            Commitment.priority_order.isnot(None),
+                            Commitment.priority_order >= new_pos,
+                            Commitment.priority_order < old_pos,
+                            Commitment.id != c.id,
+                        )
+                        .order_by(Commitment.priority_order.desc())
+                        .all()
+                    )
+                    for item in shift_q:
+                        item.priority_order = item.priority_order + 1
+                else:
+                    shift_q = (
+                        db.query(Commitment)
+                        .filter(
+                            Commitment.status != CommitmentStatus.CLOSED,
+                            Commitment.priority_order.isnot(None),
+                            Commitment.priority_order > old_pos,
+                            Commitment.priority_order <= new_pos,
+                            Commitment.id != c.id,
+                        )
+                        .order_by(Commitment.priority_order.asc())
+                        .all()
+                    )
+                    for item in shift_q:
+                        item.priority_order = item.priority_order - 1
         setattr(c, key, value)
 
     c.last_touched_at = datetime.now(timezone.utc)
+    db.commit()
+    _compact_priorities(db)
     db.commit()
     db.refresh(c)
     logger.info("Updated commitment %s", c.id)
@@ -193,15 +234,61 @@ def set_priority(
     commitment_id: str,
     priority_order: int,
 ) -> Optional[Commitment]:
-    """Set a commitment's priority_order, shifting others as needed."""
+    """Set a commitment's priority_order, shifting others as needed.
+
+    Uses a proper move algorithm that handles both "move up" (to a lower
+    position number) and "move down" (to a higher position number) correctly.
+    For items that don't yet have a priority_order, this behaves as an insert.
+    """
     c = db.query(Commitment).filter(
         Commitment.id == uuid.UUID(commitment_id),
     ).first()
     if not c:
         return None
 
-    _reorder_priorities(db, priority_order, exclude_id=c.id)
-    c.priority_order = priority_order
+    old_pos = c.priority_order
+    new_pos = priority_order
+
+    if old_pos is None:
+        # Item has no priority yet — treat as insert
+        _reorder_priorities(db, new_pos, exclude_id=c.id)
+    elif old_pos == new_pos:
+        # No-op
+        pass
+    elif new_pos < old_pos:
+        # Moving up: shift items in [new_pos, old_pos) down by +1
+        items = (
+            db.query(Commitment)
+            .filter(
+                Commitment.status != CommitmentStatus.CLOSED,
+                Commitment.priority_order.isnot(None),
+                Commitment.priority_order >= new_pos,
+                Commitment.priority_order < old_pos,
+                Commitment.id != c.id,
+            )
+            .order_by(Commitment.priority_order.desc())
+            .all()
+        )
+        for item in items:
+            item.priority_order = item.priority_order + 1
+    else:
+        # Moving down: shift items in (old_pos, new_pos] up by -1
+        items = (
+            db.query(Commitment)
+            .filter(
+                Commitment.status != CommitmentStatus.CLOSED,
+                Commitment.priority_order.isnot(None),
+                Commitment.priority_order > old_pos,
+                Commitment.priority_order <= new_pos,
+                Commitment.id != c.id,
+            )
+            .order_by(Commitment.priority_order.asc())
+            .all()
+        )
+        for item in items:
+            item.priority_order = item.priority_order - 1
+
+    c.priority_order = new_pos
     c.last_touched_at = datetime.now(timezone.utc)
     db.commit()
     _compact_priorities(db)
