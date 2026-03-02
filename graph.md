@@ -51,7 +51,8 @@ Client (ChatGPT / curl / etc.)
 │  status          ENUM          NOT NULL, INDEX   │
 │                  (OPEN|WAITING|SNOOZED|CLOSED)   │
 │  urgency         ENUM          NULLABLE           │
-│                  (NOW|SOON|SCHEDULED|SOMEDAY)    │
+│                  (INCIDENT|NOW|SOON|SCHEDULED|   │
+│                   SOMEDAY)                       │
 │  person          VARCHAR(256)  NULLABLE, INDEX   │
 │  organization    VARCHAR(256)  NULLABLE           │
 │  channel_type    ENUM          NULLABLE           │
