@@ -47,7 +47,7 @@ components:
           nullable: true
         urgency:
           type: string
-          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY]
+          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
           nullable: true
         due_at:
           type: string
@@ -92,7 +92,7 @@ components:
           nullable: true
         urgency:
           type: string
-          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY]
+          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
           nullable: true
         person:
           type: string
@@ -133,7 +133,7 @@ components:
           enum: [OPEN, WAITING, SNOOZED, CLOSED]
         urgency:
           type: string
-          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY]
+          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
           nullable: true
         person:
           type: string
@@ -317,7 +317,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY]
+            enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
         - name: channel_type
           in: query
           schema:
