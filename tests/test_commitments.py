@@ -340,20 +340,139 @@ def test_list_priorities(client):
 
 
 def test_update_priority_order(client):
+    # Create two items so we can move one to position 2
     r = client.post(
         "/commitments/open",
-        json={"title": "Task with priority", "priority_order": 1},
+        json={"title": "Task A", "priority_order": 1},
+        headers=HEADERS,
+    )
+    cid_a = r.json()["id"]
+
+    client.post(
+        "/commitments/open",
+        json={"title": "Task B", "priority_order": 2},
+        headers=HEADERS,
+    )
+
+    # Move Task A to position 2 via update endpoint
+    r2 = client.post(
+        "/commitments/update",
+        json={"commitment_id": cid_a, "priority_order": 2},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["priority_order"] == 2
+
+    # Verify order: B=1, A=2
+    r3 = client.get("/commitments/priorities", headers=HEADERS)
+    items = r3.json()
+    assert items[0]["title"] == "Task B"
+    assert items[0]["priority_order"] == 1
+    assert items[1]["title"] == "Task A"
+    assert items[1]["priority_order"] == 2
+
+
+def test_set_priority_move_down(client):
+    """Moving an item from position 1 to position 3 should shift others up."""
+    ids = []
+    for i, title in enumerate(["A", "B", "C"], start=1):
+        r = client.post(
+            "/commitments/open",
+            json={"title": title, "priority_order": i},
+            headers=HEADERS,
+        )
+        assert r.status_code == 200
+        ids.append(r.json()["id"])
+
+    # Move A from position 1 to position 3
+    r = client.post(
+        "/commitments/set_priority",
+        json={"commitment_id": ids[0], "priority_order": 3},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["priority_order"] == 3
+
+    # Verify: B=1, C=2, A=3
+    r2 = client.get("/commitments/priorities", headers=HEADERS)
+    items = r2.json()
+    assert len(items) == 3
+    assert items[0]["title"] == "B"
+    assert items[0]["priority_order"] == 1
+    assert items[1]["title"] == "C"
+    assert items[1]["priority_order"] == 2
+    assert items[2]["title"] == "A"
+    assert items[2]["priority_order"] == 3
+
+
+def test_set_priority_move_up(client):
+    """Moving an item from position 3 to position 1 should shift others down."""
+    ids = []
+    for i, title in enumerate(["A", "B", "C"], start=1):
+        r = client.post(
+            "/commitments/open",
+            json={"title": title, "priority_order": i},
+            headers=HEADERS,
+        )
+        assert r.status_code == 200
+        ids.append(r.json()["id"])
+
+    # Move C from position 3 to position 1
+    r = client.post(
+        "/commitments/set_priority",
+        json={"commitment_id": ids[2], "priority_order": 1},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["priority_order"] == 1
+
+    # Verify: C=1, A=2, B=3
+    r2 = client.get("/commitments/priorities", headers=HEADERS)
+    items = r2.json()
+    assert len(items) == 3
+    assert items[0]["title"] == "C"
+    assert items[0]["priority_order"] == 1
+    assert items[1]["title"] == "A"
+    assert items[1]["priority_order"] == 2
+    assert items[2]["title"] == "B"
+    assert items[2]["priority_order"] == 3
+
+
+def test_priority_order_rejects_zero(client):
+    """priority_order=0 should be rejected by validation."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Bad priority", "priority_order": 0},
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+
+
+def test_priority_order_rejects_negative(client):
+    """priority_order=-1 should be rejected by validation."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Negative priority", "priority_order": -1},
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+
+
+def test_update_priority_order_rejects_zero(client):
+    """priority_order=0 via update should be rejected by validation."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Some task"},
         headers=HEADERS,
     )
     cid = r.json()["id"]
 
     r2 = client.post(
         "/commitments/update",
-        json={"commitment_id": cid, "priority_order": 5},
+        json={"commitment_id": cid, "priority_order": 0},
         headers=HEADERS,
     )
-    assert r2.status_code == 200
-    assert r2.json()["priority_order"] == 5
+    assert r2.status_code == 422
 
 
 def test_query_by_text(client):
