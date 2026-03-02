@@ -59,7 +59,8 @@ signal-os/
 │       ├── 001_initial_schema.py  # Initial migration
 │       ├── 002_add_incident_urgency.py  # Add INCIDENT to urgency enum
 │       ├── 003_add_admin_urgency.py    # Add ADMIN to urgency enum
-│       └── 004_add_priority_order.py   # Add priority_order column
+│       ├── 004_add_priority_order.py   # Add priority_order column
+│       └── 005_add_commitment_comments.py  # Add commitment_comments table
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py              # Test fixtures (SQLite, TestClient)
@@ -100,6 +101,10 @@ The API layer delegates all business logic to the service layer. Routes are thin
   - `list_priorities()` -- All ranked commitments sorted by priority_order
   - `query_commitments()` -- Filtered search (person, status, urgency, channel, dates, text)
 
+- **`comments.py`** -- Commitment comment operations
+  - `add_comment()` -- Add a timestamped comment to a commitment
+  - `list_comments()` -- List all comments for a commitment, ordered oldest first
+
 - **`reminders.py`** -- Reminder lifecycle
   - `create_reminder()` -- Schedule a new reminder
   - `get_due_reminders()` -- Find all due, unsent reminders
@@ -113,8 +118,11 @@ The service layer contains all business logic and directly interacts with SQLAlc
 - **Session management:** `sessionmaker` with `get_db()` generator for FastAPI dependency injection
 - **Models:**
   - `Commitment` -- Primary entity with status/urgency/channel enums, timestamps, and person/org metadata
+  - `CommitmentComment` -- Timestamped note linked to a commitment for tracking history
   - `Reminder` -- Linked to `Commitment` via foreign key with cascade delete
-- **Relationships:** `Commitment.reminders` (one-to-many, joined eager loading, cascade delete-orphan)
+- **Relationships:**
+  - `Commitment.reminders` (one-to-many, joined eager loading, cascade delete-orphan)
+  - `Commitment.comments` (one-to-many, select loading, cascade delete-orphan, ordered by created_at)
 
 ### 3.4 Integration Layer (`app/integrations/`)
 
@@ -137,7 +145,7 @@ This is a single-tenant, single-key model suitable for agent-to-API communicatio
 
 ### 5.1 Schema
 
-Two tables managed by Alembic migrations:
+Three tables managed by Alembic migrations:
 
 **`commitments`**
 - Primary key: UUID (server-generated via `gen_random_uuid()`)
@@ -146,6 +154,12 @@ Two tables managed by Alembic migrations:
 - Timestamps: `opened_at`, `closed_at`, `due_at`, `last_touched_at`
 - Additional columns: `priority_order` (nullable integer for explicit ranking)
 
+**`commitment_comments`**
+- Primary key: UUID (server-generated)
+- Foreign key: `commitment_id` references `commitments.id` with `ON DELETE CASCADE`
+- Indexed columns: `commitment_id`
+- Columns: `body` (text, not null), `author` (varchar, nullable), `created_at` (timestamptz, not null)
+
 **`reminders`**
 - Primary key: UUID (server-generated)
 - Foreign key: `commitment_id` references `commitments.id` with `ON DELETE CASCADE`
@@ -153,7 +167,7 @@ Two tables managed by Alembic migrations:
 
 ### 5.2 Migrations
 
-- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency) -> `004` (add priority_order column)
+- Managed by Alembic with revision chain: `001` (initial schema) -> `002` (add INCIDENT urgency) -> `003` (add ADMIN urgency) -> `004` (add priority_order column) -> `005` (add commitment_comments table)
 - Migrations run automatically on container startup (`alembic upgrade head`)
 - `alembic/env.py` overrides the DB URL from `DATABASE_URL` env var at runtime
 

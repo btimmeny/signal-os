@@ -193,6 +193,37 @@ components:
         days_open:
           type: number
 
+    CommentCreateRequest:
+      type: object
+      required: [commitment_id, body]
+      properties:
+        commitment_id:
+          type: string
+        body:
+          type: string
+          minLength: 1
+          description: The comment text (status update, meeting note, etc.)
+        author:
+          type: string
+          nullable: true
+          description: Who wrote the comment
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        commitment_id:
+          type: string
+        body:
+          type: string
+        author:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
     ReminderCreateRequest:
       type: object
       required: [commitment_id, remind_at]
@@ -417,6 +448,56 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Commitment"
+
+  /commitments/comment:
+    post:
+      operationId: addComment
+      summary: Add a comment to a commitment
+      description: >
+        Adds a timestamped comment to a commitment. Use this to record
+        status updates, meeting notes, progress, or any context related
+        to the commitment. Comments are preserved as history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentCreateRequest"
+      responses:
+        "200":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          description: Commitment not found
+
+  /commitments/comments:
+    get:
+      operationId: listComments
+      summary: List all comments for a commitment
+      description: >
+        Returns all comments for a commitment, ordered from oldest to
+        newest. Use this to get the full history of updates on a
+        commitment.
+      parameters:
+        - name: commitment_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "404":
+          description: Commitment not found
 
   /reminders/create:
     post:

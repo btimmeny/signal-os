@@ -67,12 +67,26 @@ Client (ChatGPT / curl / etc.)
 │  last_touched_at TIMESTAMPTZ   NOT NULL           │
 │  priority_order  INTEGER       NULLABLE           │
 ├─────────────────────────────────────────────────┤
-│  1 ───────────────────────── * reminders         │
+│  1 ──────── * reminders                          │
+│  1 ──────── * commitment_comments                │
 └─────────────────────────────────────────────────┘
 
-                     │ ON DELETE CASCADE
-                     │
-                     ▼
+              │ ON DELETE CASCADE          │ ON DELETE CASCADE
+              │                            │
+              ▼                            ▼
+
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│    commitment_comments       │  │         reminders             │
+├──────────────────────────────┤  ├──────────────────────────────┤
+│  id            UUID      PK │  │  (see below)                 │
+│  commitment_id UUID      FK,│  └──────────────────────────────┘
+│               NOT NULL,INDEX│
+│  body          TEXT NOT NULL│
+│  author        VARCHAR(256) │
+│               NULLABLE      │
+│  created_at    TIMESTAMPTZ  │
+│               NOT NULL      │
+└──────────────────────────────┘
 
 ┌─────────────────────────────────────────────────┐
 │                  reminders                       │
@@ -222,10 +236,15 @@ Client (ChatGPT / curl / etc.)
          (POST)   (POST)   (POST)     │
          (GET)                         │
              │                         │
-       ┌─────┼─────────┐               │
-       │     │         │               │
-    /query /set_priority /priorities   │
-    (GET)   (POST)       (GET)         │
+       ┌─────┼─────────┬───────────┐   │
+       │     │         │           │   │
+    /query /set_priority /priorities│   │
+    (GET)   (POST)       (GET)     │   │
+                                   │   │
+                          ┌────────┘   │
+                          │            │
+                     /comment  /comments
+                     (POST)    (GET)    │
                                        │
                                ┌───────┼───────┐
           (GET)                │       │       │
@@ -242,6 +261,8 @@ main.py
   └── services/
         ├── commitments.py
         │     └── models.py (Commitment, enums)
+        ├── comments.py
+        │     └── models.py (CommitmentComment, Commitment)
         └── reminders.py
               ├── models.py (Reminder)
               └── integrations/
