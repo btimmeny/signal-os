@@ -27,6 +27,10 @@ Client (ChatGPT / curl / etc.)
 ┌──────────────────────────────────┐
 │         Service Layer            │
 │  services/commitments.py         │
+│  services/objectives.py          │
+│  services/objective_links.py     │
+│  services/objective_updates.py   │
+│  services/status_reports.py      │
 │  services/reminders.py           │
 │  Business logic + DB queries     │
 └──────────────┬───────────────────┘
@@ -87,6 +91,55 @@ Client (ChatGPT / curl / etc.)
 │  created_at    TIMESTAMPTZ  │
 │               NOT NULL      │
 └──────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│              strategic_objectives                │
+├─────────────────────────────────────────────────┤
+│  id              UUID          PK                │
+│  title           VARCHAR(512)  NOT NULL, INDEX   │
+│  description     TEXT          NULLABLE           │
+│  year            INTEGER       NOT NULL, INDEX   │
+│  status          ENUM          NOT NULL           │
+│                  (ACTIVE|COMPLETED|DEFERRED|      │
+│                   CANCELLED)                      │
+│  created_at      TIMESTAMPTZ   NOT NULL           │
+│  updated_at      TIMESTAMPTZ   NOT NULL           │
+├─────────────────────────────────────────────────┤
+│  1 ──────── * objective_commitment_links          │
+│  1 ──────── * objective_updates                   │
+└─────────────────────────────────────────────────┘
+
+              │ ON DELETE CASCADE          │ ON DELETE CASCADE
+              │                            │
+              ▼                            ▼
+
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│ objective_commitment_links   │  │     objective_updates         │
+├──────────────────────────────┤  ├──────────────────────────────┤
+│  id            UUID      PK │  │  id            UUID      PK │
+│  objective_id  UUID  FK,NOT │  │  objective_id  UUID  FK,NOT │
+│               NULL, INDEX   │  │               NULL, INDEX   │
+│  commitment_id UUID  FK,NOT │  │  body          TEXT NOT NULL│
+│               NULL          │  │  author        VARCHAR(256) │
+│  rationale     TEXT NULLABLE│  │               NULLABLE      │
+│  created_at    TIMESTAMPTZ  │  │  created_at    TIMESTAMPTZ  │
+│               NOT NULL      │  │               NOT NULL      │
+│  UNIQUE(objective_id,       │  └──────────────────────────────┘
+│         commitment_id)      │
+└──────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│               status_reports                     │
+├─────────────────────────────────────────────────┤
+│  id              UUID          PK                │
+│  period_type     ENUM          NOT NULL, INDEX   │
+│                  (WEEKLY|MONTHLY|QUARTERLY|       │
+│                   ANNUAL)                         │
+│  period_start    TIMESTAMPTZ   NOT NULL           │
+│  period_end      TIMESTAMPTZ   NOT NULL           │
+│  body            TEXT          NOT NULL           │
+│  created_at      TIMESTAMPTZ   NOT NULL           │
+└─────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────┐
 │                  reminders                       │
@@ -224,32 +277,56 @@ Client (ChatGPT / curl / etc.)
 ```
                         /
                         │
-          ┌─────────────┼──────────────┐
-          │             │              │
-      /health     /commitments     /reminders
-      (GET)           │                │
-      [no auth]       │                │
-                      │                │
-             ┌────────┼────────┐       │
-             │        │        │       │
-          /open    /close   /update    │
-         (POST)   (POST)   (POST)     │
-         (GET)                         │
-             │                         │
-       ┌─────┼─────────┬───────────┐   │
-       │     │         │           │   │
-    /query /set_priority /priorities│   │
-    (GET)   (POST)       (GET)     │   │
-                                   │   │
-                          ┌────────┘   │
-                          │            │
-                     /comment  /comments
-                     (POST)    (GET)    │
-                                       │
-                               ┌───────┼───────┐
-          (GET)                │       │       │
-                           /create   /due  /dispatch_due
-                           (POST)   (GET)    (POST)
+          ┌─────────────┼──────────────┬──────────────┐
+          │             │              │              │
+      /health     /commitments     /objectives    /status
+      (GET)           │                │              │
+      [no auth]       │                │              │
+                      │                │              │
+             ┌────────┼────────┐       │              │
+             │        │        │       │              │
+          /open    /close   /update    │              │
+         (POST)   (POST)   (POST)     │              │
+         (GET)                         │              │
+             │                         │              │
+       ┌─────┼─────────┬───────────┐   │              │
+       │     │         │           │   │              │
+    /query /set_priority /priorities│   │              │
+    (GET)   (POST)       (GET)     │   │              │
+                                   │   │              │
+                          ┌────────┘   │              │
+                          │            │              │
+                     /comment  /comments              │
+                     (POST)    (GET)                   │
+                          │                            │
+                     /objectives                       │
+                     (GET)                             │
+                                                      │
+                               ┌──────────────────────┘
+                               │
+                  ┌────────────┼────────────────┐
+                  │            │                │
+              /report      /reports          /data
+              (POST,GET)   (GET)            (POST)
+
+                               │
+          ┌────────────────────┼───────────────────────┐
+          │                    │                       │
+      /create             /update              /link  /unlink
+      (POST)              (POST)               (POST) (POST)
+          │                    │                       │
+      /list               /update_note           /links
+      (GET)               (POST)                 (GET)
+          │                    │
+      /get                /updates
+      (GET)               (GET)
+
+                       /reminders
+                           │
+                   ┌───────┼───────┐
+                   │       │       │
+               /create   /due  /dispatch_due
+               (POST)   (GET)    (POST)
 ```
 
 ## 7. Module Dependency Graph
@@ -263,6 +340,14 @@ main.py
         │     └── models.py (Commitment, enums)
         ├── comments.py
         │     └── models.py (CommitmentComment, Commitment)
+        ├── objectives.py
+        │     └── models.py (StrategicObjective, enums)
+        ├── objective_links.py
+        │     └── models.py (ObjectiveCommitmentLink, StrategicObjective, Commitment)
+        ├── objective_updates.py
+        │     └── models.py (ObjectiveUpdate, StrategicObjective)
+        ├── status_reports.py
+        │     └── models.py (StatusReport, StrategicObjective, Commitment, etc.)
         └── reminders.py
               ├── models.py (Reminder)
               └── integrations/

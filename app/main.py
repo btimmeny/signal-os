@@ -21,12 +21,26 @@ from app.schemas import (
     CommitmentResponse,
     CommitmentSetPriorityRequest,
     CommitmentUpdateRequest,
+    ObjectiveCreateRequest,
+    ObjectiveLinkRequest,
+    ObjectiveLinkResponse,
+    ObjectiveResponse,
+    ObjectiveUpdateCreateRequest,
+    ObjectiveUpdateRequest,
+    ObjectiveUpdateResponse,
     ReminderCreateRequest,
     ReminderResponse,
+    StatusDataRequest,
+    StatusReportCreateRequest,
+    StatusReportResponse,
 )
 from app.services import comments as comment_svc
 from app.services import commitments as commitment_svc
+from app.services import objective_links as link_svc
+from app.services import objective_updates as obj_update_svc
+from app.services import objectives as objective_svc
 from app.services import reminders as reminder_svc
+from app.services import status_reports as report_svc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -220,6 +234,178 @@ def commitments_list_comments(
     if comments is None:
         raise HTTPException(status_code=404, detail="Commitment not found")
     return [CommentResponse.from_orm_row(c) for c in comments]
+
+
+# ---------------------------------------------------------------------------
+# Strategic Objectives
+# ---------------------------------------------------------------------------
+
+@app.post("/objectives/create", response_model=ObjectiveResponse)
+def objectives_create(body: ObjectiveCreateRequest, db: Session = Depends(get_db)):
+    obj = objective_svc.create_objective(
+        db,
+        title=body.title,
+        description=body.description,
+        year=body.year,
+        status=body.status.value,
+    )
+    return ObjectiveResponse.from_orm_row(obj)
+
+
+@app.post("/objectives/update", response_model=ObjectiveResponse)
+def objectives_update(body: ObjectiveUpdateRequest, db: Session = Depends(get_db)):
+    fields = body.model_dump(exclude={"objective_id"}, exclude_none=True)
+    if "status" in fields and hasattr(fields["status"], "value"):
+        fields["status"] = fields["status"].value
+    obj = objective_svc.update_objective(db, objective_id=body.objective_id, **fields)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    return ObjectiveResponse.from_orm_row(obj)
+
+
+@app.get("/objectives/list", response_model=list[ObjectiveResponse])
+def objectives_list(
+    db: Session = Depends(get_db),
+    year: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    rows = objective_svc.list_objectives(db, year=year, status=status)
+    return [ObjectiveResponse.from_orm_row(o) for o in rows]
+
+
+@app.get("/objectives/get", response_model=ObjectiveResponse)
+def objectives_get(
+    objective_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    obj = objective_svc.get_objective(db, objective_id=objective_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    return ObjectiveResponse.from_orm_row(obj)
+
+
+# ---------------------------------------------------------------------------
+# Objective-Commitment Links
+# ---------------------------------------------------------------------------
+
+@app.post("/objectives/link", response_model=ObjectiveLinkResponse)
+def objectives_link(body: ObjectiveLinkRequest, db: Session = Depends(get_db)):
+    link = link_svc.link_commitment(
+        db,
+        objective_id=body.objective_id,
+        commitment_id=body.commitment_id,
+        rationale=body.rationale,
+    )
+    if not link:
+        raise HTTPException(status_code=404, detail="Objective or commitment not found")
+    return ObjectiveLinkResponse.from_orm_row(link)
+
+
+@app.post("/objectives/unlink")
+def objectives_unlink(body: ObjectiveLinkRequest, db: Session = Depends(get_db)):
+    removed = link_svc.unlink_commitment(
+        db,
+        objective_id=body.objective_id,
+        commitment_id=body.commitment_id,
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="Link not found")
+    return {"detail": "Link removed"}
+
+
+@app.get("/objectives/links", response_model=list[ObjectiveLinkResponse])
+def objectives_links(
+    objective_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    links = link_svc.list_links_for_objective(db, objective_id=objective_id)
+    if links is None:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    return [ObjectiveLinkResponse.from_orm_row(l) for l in links]
+
+
+@app.get("/commitments/objectives", response_model=list[ObjectiveLinkResponse])
+def commitments_objectives(
+    commitment_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    links = link_svc.list_links_for_commitment(db, commitment_id=commitment_id)
+    if links is None:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+    return [ObjectiveLinkResponse.from_orm_row(l) for l in links]
+
+
+# ---------------------------------------------------------------------------
+# Objective Updates
+# ---------------------------------------------------------------------------
+
+@app.post("/objectives/update_note", response_model=ObjectiveUpdateResponse)
+def objectives_add_update(body: ObjectiveUpdateCreateRequest, db: Session = Depends(get_db)):
+    update = obj_update_svc.add_update(
+        db,
+        objective_id=body.objective_id,
+        body=body.body,
+        author=body.author,
+    )
+    if not update:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    return ObjectiveUpdateResponse.from_orm_row(update)
+
+
+@app.get("/objectives/updates", response_model=list[ObjectiveUpdateResponse])
+def objectives_list_updates(
+    objective_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    updates = obj_update_svc.list_updates(db, objective_id=objective_id)
+    if updates is None:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    return [ObjectiveUpdateResponse.from_orm_row(u) for u in updates]
+
+
+# ---------------------------------------------------------------------------
+# Status Reports
+# ---------------------------------------------------------------------------
+
+@app.post("/status/report", response_model=StatusReportResponse)
+def status_create_report(body: StatusReportCreateRequest, db: Session = Depends(get_db)):
+    report = report_svc.create_report(
+        db,
+        period_type=body.period_type.value,
+        period_start=body.period_start,
+        period_end=body.period_end,
+        body=body.body,
+    )
+    return StatusReportResponse.from_orm_row(report)
+
+
+@app.get("/status/reports", response_model=list[StatusReportResponse])
+def status_list_reports(
+    period_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    return [StatusReportResponse.from_orm_row(r) for r in report_svc.list_reports(db, period_type=period_type)]
+
+
+@app.get("/status/report")
+def status_get_report(
+    report_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    report = report_svc.get_report(db, report_id=report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return StatusReportResponse.from_orm_row(report)
+
+
+@app.post("/status/data")
+def status_gather_data(body: StatusDataRequest, db: Session = Depends(get_db)):
+    data = report_svc.gather_status_data(
+        db,
+        period_start=body.period_start,
+        period_end=body.period_end,
+    )
+    return data
 
 
 # ---------------------------------------------------------------------------
