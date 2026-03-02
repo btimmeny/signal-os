@@ -34,7 +34,7 @@ A commitment is a promise, task, or follow-up tied to a person or organization. 
 | `title` | String (max 512) | Yes | Short description of the commitment |
 | `description` | Text | No | Longer context or notes |
 | `status` | Enum | Yes (default: OPEN) | OPEN, WAITING, SNOOZED, CLOSED |
-| `urgency` | Enum | No | NOW, SOON, SCHEDULED, SOMEDAY |
+| `urgency` | Enum | No | INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY |
 | `person` | String | No | The person this commitment is with |
 | `organization` | String | No | Associated organization |
 | `channel_type` | Enum | No | email, slack, meeting, call, text, web, other |
@@ -54,6 +54,7 @@ A commitment is a promise, task, or follow-up tied to a person or organization. 
 - **CLOSED** -- Completed or cancelled
 
 **Urgency levels:**
+- **INCIDENT** -- Urgent, breaking in production right now
 - **NOW** -- Immediate action required
 - **SOON** -- Within the next few days
 - **SCHEDULED** -- Has a specific due date

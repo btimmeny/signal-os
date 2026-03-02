@@ -22,6 +22,7 @@ class CommitmentStatus(str, Enum):
 
 
 class Urgency(str, Enum):
+    INCIDENT = "INCIDENT"
     NOW = "NOW"
     SOON = "SOON"
     SCHEDULED = "SCHEDULED"
