@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas import (
+    CommentCreateRequest,
+    CommentResponse,
     CommitmentCloseRequest,
     CommitmentOpenRequest,
     CommitmentResponse,
@@ -22,6 +24,7 @@ from app.schemas import (
     ReminderCreateRequest,
     ReminderResponse,
 )
+from app.services import comments as comment_svc
 from app.services import commitments as commitment_svc
 from app.services import reminders as reminder_svc
 
@@ -189,6 +192,34 @@ def commitments_set_priority(body: CommitmentSetPriorityRequest, db: Session = D
 def commitments_priorities(db: Session = Depends(get_db)):
     rows = commitment_svc.list_priorities(db)
     return [CommitmentResponse.from_orm_with_days(c) for c in rows]
+
+
+# ---------------------------------------------------------------------------
+# Comments
+# ---------------------------------------------------------------------------
+
+@app.post("/commitments/comment", response_model=CommentResponse)
+def commitments_add_comment(body: CommentCreateRequest, db: Session = Depends(get_db)):
+    comment = comment_svc.add_comment(
+        db,
+        commitment_id=body.commitment_id,
+        body=body.body,
+        author=body.author,
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+    return CommentResponse.from_orm_row(comment)
+
+
+@app.get("/commitments/comments", response_model=list[CommentResponse])
+def commitments_list_comments(
+    commitment_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    comments = comment_svc.list_comments(db, commitment_id=commitment_id)
+    if comments is None:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+    return [CommentResponse.from_orm_row(c) for c in comments]
 
 
 # ---------------------------------------------------------------------------

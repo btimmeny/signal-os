@@ -48,6 +48,18 @@ A commitment is a promise, task, or follow-up tied to a person or organization. 
 | `priority_order` | Integer | No | Position in the overall priority list (1 = top) |
 | `days_open` | Float | Computed at read | Elapsed days since opened (or until closed) |
 
+### 4.3 Commitment Comment
+
+A comment is a timestamped note attached to a commitment. Comments capture status updates, meeting notes, progress reports, or any context that helps track the history of a commitment.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | UUID | Auto-generated | Unique identifier |
+| `commitment_id` | UUID (FK) | Yes | The commitment this comment belongs to |
+| `body` | Text | Yes | The comment content |
+| `author` | String | No | Who wrote the comment |
+| `created_at` | Timestamp | Yes (auto) | When the comment was created |
+
 **Status lifecycle:**
 - **OPEN** -- Active, needs action
 - **WAITING** -- Blocked on someone else
@@ -62,7 +74,7 @@ A commitment is a promise, task, or follow-up tied to a person or organization. 
 - **SOMEDAY** -- No time pressure
 - **ADMIN** -- Get it done when you can (lowest priority)
 
-### 4.2 Reminder
+### 4.4 Reminder
 
 A reminder is a scheduled notification tied to a commitment. When the reminder time arrives, the system dispatches a message via the configured delivery channel.
 
@@ -92,6 +104,8 @@ A reminder is a scheduled notification tied to a commitment. When the reminder t
 | FR-8 | Compute `days_open` dynamically at read time | Implemented |
 | FR-16 | Set a commitment's priority_order, automatically shifting other items to maintain contiguous ranking | Implemented |
 | FR-17 | List all non-CLOSED commitments ranked by priority_order | Implemented |
+| FR-18 | Add a timestamped comment to a commitment with optional author | Implemented |
+| FR-19 | List all comments for a commitment, ordered oldest to newest | Implemented |
 
 ### 5.2 Reminder Management
 
@@ -141,6 +155,8 @@ A reminder is a scheduled notification tied to a commitment. When the reminder t
 | GET | `/commitments/query` | Query with filters |
 | POST | `/commitments/set_priority` | Set a commitment's position in the priority list |
 | GET | `/commitments/priorities` | List all open commitments ranked by priority |
+| POST | `/commitments/comment` | Add a comment to a commitment |
+| GET | `/commitments/comments` | List all comments for a commitment |
 | POST | `/reminders/create` | Schedule a reminder |
 | GET | `/reminders/due` | List due unsent reminders |
 | POST | `/reminders/dispatch_due` | Dispatch all due reminders |

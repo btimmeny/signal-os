@@ -139,6 +139,36 @@ class CommitmentResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Comment schemas
+# ---------------------------------------------------------------------------
+
+class CommentCreateRequest(BaseModel):
+    commitment_id: str
+    body: str = Field(..., min_length=1)
+    author: Optional[str] = None
+
+
+class CommentResponse(BaseModel):
+    id: str
+    commitment_id: str
+    body: str
+    author: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "CommentResponse":
+        return cls(
+            id=str(obj.id),
+            commitment_id=str(obj.commitment_id),
+            body=obj.body,
+            author=obj.author,
+            created_at=obj.created_at,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Reminder schemas
 # ---------------------------------------------------------------------------
 

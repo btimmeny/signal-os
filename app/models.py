@@ -102,9 +102,50 @@ class Commitment(Base):
         "Reminder", back_populates="commitment", cascade="all, delete-orphan",
         lazy="joined",
     )
+    comments = relationship(
+        "CommitmentComment", back_populates="commitment", cascade="all, delete-orphan",
+        lazy="select",
+        order_by="CommitmentComment.created_at.asc()",
+    )
 
     def __repr__(self) -> str:
         return f"<Commitment {self.id} title={self.title!r} status={self.status}>"
+
+
+# ---------------------------------------------------------------------------
+# Reminder
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Commitment Comment
+# ---------------------------------------------------------------------------
+
+class CommitmentComment(Base):
+    __tablename__ = "commitment_comments"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    commitment_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    body = Column(Text, nullable=False)
+    author = Column(String(256), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    commitment = relationship("Commitment", back_populates="comments")
+
+    def __repr__(self) -> str:
+        return f"<CommitmentComment {self.id} commitment={self.commitment_id}>"
 
 
 # ---------------------------------------------------------------------------

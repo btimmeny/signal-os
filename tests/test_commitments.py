@@ -475,6 +475,142 @@ def test_update_priority_order_rejects_zero(client):
     assert r2.status_code == 422
 
 
+def test_add_comment(client):
+    """Add a comment to a commitment and verify it's returned."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Task with comments", "person": "Alice"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    r2 = client.post(
+        "/commitments/comment",
+        json={"commitment_id": cid, "body": "Had a meeting about this", "author": "Alice"},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    data = r2.json()
+    assert data["body"] == "Had a meeting about this"
+    assert data["author"] == "Alice"
+    assert data["commitment_id"] == cid
+    assert "id" in data
+    assert "created_at" in data
+
+
+def test_list_comments(client):
+    """List comments for a commitment, ordered oldest first."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Task for comment listing"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    # Add two comments
+    client.post(
+        "/commitments/comment",
+        json={"commitment_id": cid, "body": "First update"},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/comment",
+        json={"commitment_id": cid, "body": "Second update", "author": "Bob"},
+        headers=HEADERS,
+    )
+
+    r2 = client.get(f"/commitments/comments?commitment_id={cid}", headers=HEADERS)
+    assert r2.status_code == 200
+    items = r2.json()
+    assert len(items) == 2
+    assert items[0]["body"] == "First update"
+    assert items[0]["author"] is None
+    assert items[1]["body"] == "Second update"
+    assert items[1]["author"] == "Bob"
+
+
+def test_comment_on_nonexistent_commitment(client):
+    """Adding a comment to a non-existent commitment returns 404."""
+    fake_id = "00000000-0000-0000-0000-000000000000"
+    r = client.post(
+        "/commitments/comment",
+        json={"commitment_id": fake_id, "body": "This should fail"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 404
+
+
+def test_list_comments_nonexistent_commitment(client):
+    """Listing comments for a non-existent commitment returns 404."""
+    fake_id = "00000000-0000-0000-0000-000000000000"
+    r = client.get(f"/commitments/comments?commitment_id={fake_id}", headers=HEADERS)
+    assert r.status_code == 404
+
+
+def test_comment_empty_body_rejected(client):
+    """A comment with an empty body should be rejected."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Task for empty comment test"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    r2 = client.post(
+        "/commitments/comment",
+        json={"commitment_id": cid, "body": ""},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 422
+
+
+def test_comments_empty_for_new_commitment(client):
+    """A new commitment should have no comments."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Fresh task"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    r2 = client.get(f"/commitments/comments?commitment_id={cid}", headers=HEADERS)
+    assert r2.status_code == 200
+    assert r2.json() == []
+
+
+def test_comments_deleted_with_commitment(client):
+    """Comments should be deleted when the parent commitment is closed."""
+    r = client.post(
+        "/commitments/open",
+        json={"title": "Task to close with comments"},
+        headers=HEADERS,
+    )
+    cid = r.json()["id"]
+
+    # Add a comment
+    client.post(
+        "/commitments/comment",
+        json={"commitment_id": cid, "body": "Some progress note"},
+        headers=HEADERS,
+    )
+
+    # Verify comment exists
+    r2 = client.get(f"/commitments/comments?commitment_id={cid}", headers=HEADERS)
+    assert len(r2.json()) == 1
+
+    # Close the commitment - comments should still be accessible
+    client.post(
+        "/commitments/close",
+        json={"commitment_id": cid},
+        headers=HEADERS,
+    )
+
+    # Comments should still be there (closing doesn't delete)
+    r3 = client.get(f"/commitments/comments?commitment_id={cid}", headers=HEADERS)
+    assert r3.status_code == 200
+    assert len(r3.json()) == 1
+
+
 def test_query_by_text(client):
     client.post(
         "/commitments/open",
