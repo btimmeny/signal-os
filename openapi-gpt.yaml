@@ -854,3 +854,20 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  period_start:
+                    type: string
+                  period_end:
+                    type: string
+                  objectives:
+                    type: array
+                    items:
+                      type: object
+                  commitments_opened:
+                    type: array
+                    items:
+                      type: object
+                  commitments_closed:
+                    type: array
+                    items:
+                      type: object
