@@ -16,14 +16,17 @@ Every non-CLOSED commitment appears exactly once across the three sections.
 
 ## GPT Training / Anti-Hallucination
 
-The OpenAPI spec (`openapi.yaml`) includes explicit instructions at two levels:
+The OpenAPI spec (`openapi.yaml`) includes explicit instructions at three levels:
 
-1. **Top-level API description** — Instructs AI agents to call `GET /commitments/dashboard` first whenever users ask about their tasks.
-2. **Endpoint-level description** — Detailed presentation rules:
+1. **Top-level API description** — Mandatory instruction block that tells AI agents to call `GET /commitments/dashboard` when users ask about their tasks, includes an explicit output template showing the grouped section format, and explicitly states that a flat numbered list is WRONG.
+2. **Endpoint-level description** — Detailed formatting rules with an example output format showing section headings (Top Priorities, objectives, urgency groups). Emphasizes NEVER flattening to a numbered list.
+3. **Other list endpoints** (`/commitments/open`, `/commitments/priorities`) — Explicitly redirect AI agents to use `/commitments/dashboard` instead when showing the full task list.
+
+Key anti-hallucination rules:
    - NEVER fabricate or recall tasks from memory
    - ALWAYS use the dashboard response as the single source of truth
-   - Present EVERY item returned
-   - NEVER omit or skip any tasks
+   - Present EVERY item returned — NEVER omit or skip
+   - NEVER flatten into a single numbered list — ALWAYS use grouped sections
    - Show `total_open` count for user verification
 
 ## Changes

@@ -4,12 +4,54 @@ info:
   description: >
     Personal commitment log system — track, query, and get reminded about commitments.
 
-    IMPORTANT INSTRUCTION FOR AI AGENTS: When the user asks to see their tasks,
-    task list, to-do list, action items, commitments, or any variation of "show me
-    my list", you MUST call GET /commitments/dashboard FIRST. This is the canonical,
-    organized view of all open tasks. NEVER fabricate or recall tasks from memory.
-    ALWAYS use the dashboard response as the single source of truth. Present every
-    item returned — do not omit or skip any tasks.
+
+    ===== MANDATORY INSTRUCTION FOR AI AGENTS =====
+
+    When the user asks to see their tasks, task list, to-do list, action items,
+    commitments, priorities, what they have going on, or ANY variation of "show me
+    my list" / "what's on my plate" / "what do I need to do":
+
+    1. You MUST call GET /commitments/dashboard. Do NOT call /commitments/open,
+       /commitments/priorities, or /commitments/query for this purpose.
+
+    2. You MUST present the response in GROUPED SECTIONS, not as a flat numbered
+       list. A flat numbered list is WRONG. The sections are:
+
+       SECTION 1 — "Top Priorities" (from priority_ranked array):
+       Show each item with its rank number. Example:
+         ## Top Priorities
+         1. Launch Claude CLI
+         2. Architecture & vTeam Plan
+
+       SECTION 2 — By Strategic Objective (from by_objective array):
+       Show each objective as a heading with its tasks indented beneath. Example:
+         ## AI Strategy
+         - Build evergreen strategy (UMA vs Devin)
+         - Build strategic pillars
+         ## People & Org
+         - Move Albert to Matteo's team
+         - Internal mobility for Cristian Sorescu
+
+       SECTION 3 — Ungrouped (from ungrouped array):
+       If there are no strategic objectives, group by urgency label. Example:
+         ## NOW
+         - Book flights to London
+         ## SCHEDULED
+         - Add goals to HCM (due March 11)
+         ## ADMIN
+         - Read Cognition article
+
+    3. NEVER flatten all tasks into a single numbered list (1, 2, 3, 4…).
+       ALWAYS preserve the section groupings from the response.
+
+    4. NEVER fabricate, guess, or recall tasks from memory. Only show tasks
+       returned by this endpoint.
+
+    5. NEVER omit or summarize away any tasks. Show every item.
+
+    6. Include the total_open count so the user can verify completeness.
+
+    ===== END MANDATORY INSTRUCTION =====
   version: 0.1.0
 
 servers:
@@ -483,7 +525,12 @@ paths:
                 $ref: "#/components/schemas/Commitment"
     get:
       operationId: listOpenCommitments
-      summary: List all open commitments
+      summary: List all open commitments (raw, unorganized)
+      description: >
+        Returns a flat list of all open commitments. AI AGENTS: Do NOT use this
+        endpoint when the user asks to see their task list. Use
+        GET /commitments/dashboard instead, which returns tasks organized by
+        priority, objective, and urgency.
       responses:
         "200":
           description: List of open commitments
@@ -614,10 +661,13 @@ paths:
   /commitments/priorities:
     get:
       operationId: listPriorities
-      summary: List all open commitments ranked by priority order
+      summary: List only priority-ranked commitments (subset)
       description: >
-        Returns all non-CLOSED commitments that have a priority_order,
-        sorted from highest priority (1) to lowest.
+        Returns only non-CLOSED commitments that have a priority_order,
+        sorted from highest priority (1) to lowest. AI AGENTS: Do NOT use
+        this endpoint when the user asks to see their full task list. This
+        only returns priority-ranked items, not all tasks. Use
+        GET /commitments/dashboard instead for the complete organized view.
       responses:
         "200":
           description: Priority-ordered list of commitments
@@ -631,46 +681,72 @@ paths:
   /commitments/dashboard:
     get:
       operationId: getTaskDashboard
-      summary: Get a comprehensive, organized view of all open tasks
+      summary: REQUIRED — The only endpoint to use when showing the user their task list
       description: >
-        CRITICAL INSTRUCTION FOR AI AGENTS: When the user asks to see their
-        tasks, task list, to-do list, action items, commitments, or any
-        variation of "show me my list" or "what's on my plate", you MUST
-        call this endpoint. NEVER fabricate, guess, or recall tasks from
-        memory. ALWAYS use the data returned by this endpoint as the single
-        source of truth. Present EVERY item returned — do not omit,
-        summarize away, or skip any tasks.
+        THIS IS THE ENDPOINT YOU MUST CALL when the user asks for their tasks.
 
 
-        Returns all non-CLOSED commitments organized into three sections:
-
-        1. priority_ranked — Items with an explicit priority order, sorted
-           by rank (1 = top). Show these FIRST under a "Top Priorities" heading.
-
-        2. by_objective — Remaining items grouped by the strategic objective
-           they are linked to. Show each objective title as a section header
-           with its tasks beneath. Show these SECOND.
-
-        3. ungrouped — Items with no priority and no linked objective,
-           grouped by urgency level (INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY,
-           ADMIN, UNSET). Show these LAST.
+        Returns all non-CLOSED commitments organized into three sections.
+        You MUST present the response using these sections — NEVER as a flat
+        numbered list.
 
 
-        PRESENTATION RULES:
+        SECTION 1 — priority_ranked (show as "Top Priorities"):
+        Items with an explicit priority order, sorted by rank (1 = top).
+        Display each with its rank number.
 
-        - Always show the total_open count so the user can verify completeness.
 
-        - Show priority_ranked items first with their rank numbers.
+        SECTION 2 — by_objective (show each objective_title as a heading):
+        Items grouped by strategic objective. Display the objective title as
+        a section heading (e.g., "## AI Strategy") with tasks listed beneath.
 
-        - If by_objective groups exist, show each objective as a section header.
 
-        - If no objectives exist, show ungrouped items by urgency labels.
+        SECTION 3 — ungrouped (show each group_label as a heading):
+        Items with no priority and no linked objective, sub-grouped by urgency
+        level (INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN, UNSET).
+        Display each urgency as a section heading with tasks beneath.
 
-        - NEVER add tasks that are not in this response.
 
-        - NEVER omit tasks that are in this response.
+        FORMATTING RULES:
 
-        - Every task appears exactly once across all three sections.
+        1. NEVER flatten into a single numbered list (1, 2, 3, 4…). This is WRONG.
+
+        2. ALWAYS use section headings to separate the three groups.
+
+        3. Show the total_open count so the user can verify completeness.
+
+        4. NEVER add tasks not in this response.
+
+        5. NEVER omit tasks that are in this response.
+
+        6. Every task appears exactly once across all three sections.
+
+
+        EXAMPLE OUTPUT FORMAT:
+
+        **16 open tasks**
+
+        ## Top Priorities
+        1. Launch Claude CLI
+        2. Architecture & vTeam Plan
+        3. Prepare presentation for Marco visit
+
+        ## AI Strategy (objective)
+        - Build evergreen strategy
+        - Build strategic pillars
+
+        ## People & Organization (objective)
+        - Move Albert to new team
+        - Internal mobility for Cristian
+
+        ## NOW
+        - Book flights to London
+
+        ## SCHEDULED
+        - Add goals to HCM (due March 11)
+
+        ## ADMIN
+        - Read Cognition article
       responses:
         "200":
           description: Organized task dashboard

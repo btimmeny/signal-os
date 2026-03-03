@@ -214,29 +214,38 @@ def commitments_priorities(db: Session = Depends(get_db)):
 
 @app.get("/commitments/dashboard")
 def commitments_dashboard(db: Session = Depends(get_db)):
-    """Return a comprehensive, organized view of all open tasks.
+    """REQUIRED endpoint for showing the user their task list.
 
-    IMPORTANT INSTRUCTION FOR AI AGENTS: When the user asks to see their tasks,
-    task list, to-do list, action items, or any variation of "show me my list",
-    you MUST call this endpoint. NEVER fabricate, guess, or recall tasks from
-    memory. ALWAYS use the data returned by this endpoint as the single source
-    of truth. Present every item returned — do not omit, summarize away, or
-    skip any tasks.
+    AI AGENTS: This is the ONLY endpoint to call when the user asks for their
+    tasks, to-do list, action items, or any variation of "show me my list".
+    Do NOT use /commitments/open or /commitments/priorities for this purpose.
 
-    Response structure:
-    - total_open: Total count of non-closed commitments
-    - priority_ranked: Items with an explicit priority order (show these FIRST)
-    - by_objective: Remaining items grouped by strategic objective (show SECOND)
-    - ungrouped: Items with no priority and no linked objective, grouped by
-      urgency level (show LAST)
+    You MUST present the response in GROUPED SECTIONS — NEVER as a flat
+    numbered list. A flat numbered list (1, 2, 3, 4…) is WRONG.
 
-    Presentation rules for AI agents:
-    1. Always show priority_ranked items first as "Top Priorities" with their rank numbers
-    2. If by_objective groups exist, show each objective as a section header with its tasks beneath
-    3. If no objectives exist, show ungrouped items organized by their urgency group labels
-    4. Include the total_open count so the user can verify completeness
-    5. Never add tasks that are not in this response
-    6. Never omit tasks that are in this response
+    Response sections (present in this order):
+    1. priority_ranked → Show as "## Top Priorities" with rank numbers
+    2. by_objective → Show each objective_title as a "## heading" with tasks beneath
+    3. ungrouped → Show each group_label (urgency level) as a "## heading" with tasks beneath
+
+    Example output format:
+        **16 open tasks**
+        ## Top Priorities
+        1. Launch Claude CLI
+        2. Architecture & vTeam Plan
+        ## AI Strategy (objective)
+        - Build evergreen strategy
+        - Build strategic pillars
+        ## NOW
+        - Book flights to London
+        ## ADMIN
+        - Read Cognition article
+
+    Rules:
+    - NEVER flatten into a single numbered list
+    - NEVER fabricate or recall tasks from memory
+    - NEVER omit tasks from this response
+    - Show total_open count for completeness verification
     """
     data = commitment_svc.get_dashboard(db)
 
