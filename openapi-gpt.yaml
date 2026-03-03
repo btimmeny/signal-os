@@ -2,35 +2,13 @@ openapi: 3.1.0
 info:
   title: Signal OS
   description: >
-    Personal commitment log system — track, query, and get reminded about commitments.
-
-
-    ===== MANDATORY INSTRUCTION FOR AI AGENTS =====
-
-    When the user asks to see their tasks, task list, to-do list, action items,
-    commitments, priorities, what they have going on, says "/tasks", or ANY
-    variation of "show me my list" / "what's on my plate" / "what do I need to do":
-
-    1. You MUST call GET /tasks. This returns pre-formatted markdown text that
-       is already organized into sections. Display the response text EXACTLY
-       as returned — do not reformat, reorder, summarize, or flatten it.
-
-    2. Do NOT call /commitments/open, /commitments/priorities, or
-       /commitments/query for this purpose. Those return raw JSON.
-       GET /tasks returns ready-to-display text.
-
-    3. NEVER fabricate, guess, or recall tasks from memory.
-
-    4. NEVER omit or summarize away any tasks. Show every item.
-
-    For structured JSON data, use GET /commitments/dashboard instead.
-
-    ===== END MANDATORY INSTRUCTION =====
+    Personal commitment log. When the user asks to see tasks, call GET /tasks
+    and display the returned text EXACTLY as-is. Do not reformat or flatten it.
+    NEVER fabricate tasks from memory. NEVER omit any tasks.
   version: 0.1.0
 
 servers:
   - url: https://signal-os-api-production.up.railway.app
-    description: Production
 
 security:
   - ApiKeyAuth: []
@@ -49,7 +27,6 @@ components:
       properties:
         title:
           type: string
-          maxLength: 512
         description:
           type: string
           nullable: true
@@ -83,7 +60,6 @@ components:
         priority_order:
           type: integer
           nullable: true
-          description: Position in the overall priority list (1 = top priority)
         status:
           type: string
           enum: [OPEN, WAITING, SNOOZED, CLOSED]
@@ -148,7 +124,6 @@ components:
         priority_order:
           type: integer
           nullable: true
-          description: Position in the overall priority list (1 = top priority)
 
     CommitmentSetPriorityRequest:
       type: object
@@ -159,7 +134,6 @@ components:
         priority_order:
           type: integer
           minimum: 1
-          description: Target position in the priority list (1 = top priority)
 
     Commitment:
       type: object
@@ -213,7 +187,6 @@ components:
         priority_order:
           type: integer
           nullable: true
-          description: Position in the overall priority list (1 = top priority)
         days_open:
           type: number
 
@@ -226,11 +199,9 @@ components:
         body:
           type: string
           minLength: 1
-          description: The comment text (status update, meeting note, etc.)
         author:
           type: string
           nullable: true
-          description: Who wrote the comment
 
     Comment:
       type: object
@@ -254,14 +225,11 @@ components:
       properties:
         title:
           type: string
-          maxLength: 512
         description:
           type: string
           nullable: true
         year:
           type: integer
-          minimum: 2000
-          maximum: 2100
         status:
           type: string
           enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
@@ -320,7 +288,6 @@ components:
         rationale:
           type: string
           nullable: true
-          description: Why this action supports this objective
 
     ObjectiveLink:
       type: object
@@ -347,7 +314,6 @@ components:
         body:
           type: string
           minLength: 1
-          description: General update or commentary on the objective
         author:
           type: string
           nullable: true
@@ -419,66 +385,21 @@ components:
           type: string
           format: date-time
 
-    ReminderCreateRequest:
-      type: object
-      required: [commitment_id, remind_at]
-      properties:
-        commitment_id:
-          type: string
-        remind_at:
-          type: string
-          format: date-time
-        message:
-          type: string
-          nullable: true
-        delivery_target:
-          type: string
-          nullable: true
-        delivery_channel:
-          type: string
-          default: whatsapp
-
-    Reminder:
-      type: object
-      properties:
-        id:
-          type: string
-        commitment_id:
-          type: string
-        remind_at:
-          type: string
-          format: date-time
-        sent_at:
-          type: string
-          format: date-time
-          nullable: true
-        delivery_channel:
-          type: string
-        delivery_target:
-          type: string
-          nullable: true
-        message:
-          type: string
-          nullable: true
-
 paths:
-  /health:
+  /tasks:
     get:
-      operationId: healthCheck
-      summary: Health check
-      security: []
+      operationId: getFormattedTaskList
+      summary: Show all tasks as pre-formatted text
+      description: >
+        Returns all open tasks as pre-formatted markdown. Display the
+        response EXACTLY as-is. Do not reformat or flatten it.
       responses:
         "200":
-          description: OK
+          description: Pre-formatted markdown task list
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                  db:
-                    type: string
+                type: string
 
   /commitments/open:
     post:
@@ -497,23 +418,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Commitment"
-    get:
-      operationId: listOpenCommitments
-      summary: List all open commitments (raw, unorganized)
-      description: >
-        Returns a flat list of all open commitments. AI AGENTS: Do NOT use this
-        endpoint when the user asks to see their task list. Use
-        GET /commitments/dashboard instead, which returns tasks organized by
-        priority, objective, and urgency.
-      responses:
-        "200":
-          description: List of open commitments
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Commitment"
 
   /commitments/close:
     post:
@@ -613,11 +517,9 @@ paths:
   /commitments/set_priority:
     post:
       operationId: setCommitmentPriority
-      summary: Set a commitment's position in the overall priority list
+      summary: Set a commitment's priority position
       description: >
-        Assigns a priority_order to a commitment (1 = top priority).
-        Other commitments are automatically shifted to maintain a
-        contiguous ranking.
+        Assigns priority_order (1 = top). Other items shift automatically.
       requestBody:
         required: true
         content:
@@ -626,111 +528,18 @@ paths:
               $ref: "#/components/schemas/CommitmentSetPriorityRequest"
       responses:
         "200":
-          description: Updated commitment with new priority
+          description: Updated commitment
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Commitment"
-
-  /commitments/priorities:
-    get:
-      operationId: listPriorities
-      summary: List only priority-ranked commitments (subset)
-      description: >
-        Returns only non-CLOSED commitments that have a priority_order,
-        sorted from highest priority (1) to lowest. Only returns ranked
-        items, not all tasks. For the full task list, use GET /tasks.
-      responses:
-        "200":
-          description: Priority-ordered list of commitments
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Commitment"
-
-  /tasks:
-    get:
-      operationId: getFormattedTaskList
-      summary: PREFERRED — Display all tasks as pre-formatted text
-      description: >
-        Returns all open tasks as pre-formatted markdown text with sections
-        (Top Priorities, By Objective, By Urgency). Plain text, not JSON.
-        Display the response EXACTLY as-is. Do not reformat or flatten it.
-      responses:
-        "200":
-          description: Pre-formatted markdown task list
-          content:
-            text/plain:
-              schema:
-                type: string
-                description: >
-                  Markdown-formatted text with sections for Top Priorities,
-                  objectives, and urgency groups. Display verbatim.
-
-  /commitments/dashboard:
-    get:
-      operationId: getTaskDashboard
-      summary: Structured JSON dashboard (use GET /tasks for display instead)
-      description: >
-        Returns all open tasks as structured JSON in three sections:
-        priority_ranked, by_objective, and ungrouped. For displaying
-        tasks to users, prefer GET /tasks (pre-formatted text).
-      responses:
-        "200":
-          description: Organized task dashboard
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  total_open:
-                    type: integer
-                    description: Total count of non-closed commitments
-                  priority_ranked:
-                    type: array
-                    description: Items with explicit priority order, sorted by rank
-                    items:
-                      $ref: "#/components/schemas/Commitment"
-                  by_objective:
-                    type: array
-                    description: Items grouped by linked strategic objective
-                    items:
-                      type: object
-                      properties:
-                        objective_id:
-                          type: string
-                        objective_title:
-                          type: string
-                        objective_status:
-                          type: string
-                        commitments:
-                          type: array
-                          items:
-                            $ref: "#/components/schemas/Commitment"
-                  ungrouped:
-                    type: array
-                    description: Items with no priority/objective, grouped by urgency
-                    items:
-                      type: object
-                      properties:
-                        group_label:
-                          type: string
-                          description: Urgency level or UNSET
-                        commitments:
-                          type: array
-                          items:
-                            $ref: "#/components/schemas/Commitment"
 
   /commitments/comment:
     post:
       operationId: addComment
       summary: Add a comment to a commitment
       description: >
-        Adds a timestamped comment to a commitment. Use this to record
-        status updates, meeting notes, progress, or any context related
-        to the commitment. Comments are preserved as history.
+        Record a status update, meeting note, or context on a commitment.
       requestBody:
         required: true
         content:
@@ -751,10 +560,6 @@ paths:
     get:
       operationId: listComments
       summary: List all comments for a commitment
-      description: >
-        Returns all comments for a commitment, ordered from oldest to
-        newest. Use this to get the full history of updates on a
-        commitment.
       parameters:
         - name: commitment_id
           in: query
@@ -776,7 +581,7 @@ paths:
   /commitments/objectives:
     get:
       operationId: listObjectivesForCommitment
-      summary: List all objectives linked to a commitment
+      summary: List objectives linked to a commitment
       parameters:
         - name: commitment_id
           in: query
@@ -792,17 +597,11 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ObjectiveLink"
-        "404":
-          description: Commitment not found
 
   /objectives/create:
     post:
       operationId: createObjective
-      summary: Create a new strategic objective
-      description: >
-        Creates a strategic objective for a given year. Objectives
-        represent annual goals that commitments (action items) drive
-        toward.
+      summary: Create a strategic objective
       requestBody:
         required: true
         content:
@@ -820,7 +619,7 @@ paths:
   /objectives/update:
     post:
       operationId: updateObjective
-      summary: Update an objective's fields
+      summary: Update an objective
       requestBody:
         required: true
         content:
@@ -841,8 +640,6 @@ paths:
     get:
       operationId: listObjectives
       summary: List strategic objectives
-      description: >
-        Returns objectives optionally filtered by year and/or status.
       parameters:
         - name: year
           in: query
@@ -886,11 +683,9 @@ paths:
   /objectives/link:
     post:
       operationId: linkCommitmentToObjective
-      summary: Link a commitment (action item) to a strategic objective
+      summary: Link a commitment to a strategic objective
       description: >
-        Creates a link between a commitment and an objective, recording
-        why this action supports the strategic goal. Idempotent — relinking
-        updates the rationale.
+        Idempotent — relinking updates the rationale.
       requestBody:
         required: true
         content:
@@ -910,7 +705,7 @@ paths:
   /objectives/unlink:
     post:
       operationId: unlinkCommitmentFromObjective
-      summary: Remove the link between a commitment and an objective
+      summary: Remove link between commitment and objective
       requestBody:
         required: true
         content:
@@ -926,7 +721,7 @@ paths:
   /objectives/links:
     get:
       operationId: listLinksForObjective
-      summary: List all commitments linked to an objective
+      summary: List commitments linked to an objective
       parameters:
         - name: objective_id
           in: query
@@ -942,17 +737,11 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ObjectiveLink"
-        "404":
-          description: Objective not found
 
   /objectives/update_note:
     post:
       operationId: addObjectiveUpdate
-      summary: Add general commentary/update to an objective
-      description: >
-        Adds a timestamped update note to an objective. Use this for
-        general commentary not tied to a specific task, like meeting
-        notes, market changes, or strategic observations.
+      summary: Add commentary/update to an objective
       requestBody:
         required: true
         content:
@@ -988,17 +777,11 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ObjectiveUpdateNote"
-        "404":
-          description: Objective not found
 
   /status/report:
     post:
       operationId: createStatusReport
       summary: Store a status report
-      description: >
-        Saves a generated status report (weekly, monthly, quarterly,
-        or annual) with the body text. The body is typically composed
-        by the AI from gathered status data.
       requestBody:
         required: true
         content:
@@ -1014,7 +797,7 @@ paths:
                 $ref: "#/components/schemas/StatusReport"
     get:
       operationId: getStatusReport
-      summary: Get a single status report by ID
+      summary: Get a status report by ID
       parameters:
         - name: report_id
           in: query
@@ -1054,12 +837,10 @@ paths:
   /status/data:
     post:
       operationId: gatherStatusData
-      summary: Gather all data needed to produce a status report
+      summary: Gather data for a status report
       description: >
-        Returns structured data for a time period: objectives with
-        linked commitments and their comments, objective updates,
-        and commitment activity (opened/closed). Use this to compose
-        a weekly, monthly, quarterly, or annual status narrative.
+        Returns objectives, linked commitments, comments, updates,
+        and activity for a period. Use to compose status narratives.
       requestBody:
         required: true
         content:
@@ -1073,66 +854,3 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  period_start:
-                    type: string
-                  period_end:
-                    type: string
-                  objectives:
-                    type: array
-                    items:
-                      type: object
-                  commitments_opened:
-                    type: array
-                    items:
-                      type: object
-                  commitments_closed:
-                    type: array
-                    items:
-                      type: object
-
-  /reminders/create:
-    post:
-      operationId: createReminder
-      summary: Schedule a reminder for a commitment
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReminderCreateRequest"
-      responses:
-        "200":
-          description: Created reminder
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Reminder"
-
-  /reminders/due:
-    get:
-      operationId: listDueReminders
-      summary: List reminders that are due and unsent
-      responses:
-        "200":
-          description: Due reminders
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Reminder"
-
-  /reminders/dispatch_due:
-    post:
-      operationId: dispatchDueReminders
-      summary: Send all due reminders (mock WhatsApp in MVP)
-      responses:
-        "200":
-          description: Dispatched reminders
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Reminder"
