@@ -204,6 +204,7 @@ A reminder is a scheduled notification tied to a commitment. When the reminder t
 |----|-------------|--------|
 | FR-34 | Provide a single GET endpoint that returns all non-CLOSED commitments organized by priority rank, strategic objective, and urgency grouping | Implemented |
 | FR-35 | Include GPT training instructions in the OpenAPI spec to prevent hallucination and ensure the dashboard is always used as the canonical task source | Implemented |
+| FR-36 | Provide a GET /tasks endpoint that returns pre-formatted markdown text ready for verbatim display by AI agents | Implemented |
 
 ### 5.7 Reminder Management
 
@@ -253,7 +254,8 @@ A reminder is a scheduled notification tied to a commitment. When the reminder t
 | GET | `/commitments/query` | Query with filters |
 | POST | `/commitments/set_priority` | Set a commitment's position in the priority list |
 | GET | `/commitments/priorities` | List all open commitments ranked by priority |
-| GET | `/commitments/dashboard` | Comprehensive organized view of all open tasks |
+| GET | `/tasks` | Pre-formatted markdown task list (preferred for display) |
+| GET | `/commitments/dashboard` | Structured JSON organized view of all open tasks |
 | POST | `/commitments/comment` | Add a comment to a commitment |
 | GET | `/commitments/comments` | List all comments for a commitment |
 | GET | `/commitments/objectives` | List all objectives linked to a commitment |

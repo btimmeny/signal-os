@@ -441,6 +441,52 @@ def get_dashboard(db: Session) -> dict:
     }
 
 
+def format_dashboard_text(db: Session) -> str:
+    """Return all non-CLOSED commitments as pre-formatted markdown text.
+
+    The text is ready to display verbatim — no reformatting needed.
+    Sections: Top Priorities → By Objective → By Urgency.
+    """
+    data = get_dashboard(db)
+    lines: list[str] = []
+
+    lines.append(f"**{data['total_open']} open tasks**\n")
+
+    # Section 1: Top Priorities
+    if data["priority_ranked"]:
+        lines.append("## Top Priorities")
+        for i, c in enumerate(data["priority_ranked"], 1):
+            due = ""
+            if c.due_at:
+                due = f" (due {c.due_at.strftime('%b %d')})"
+            lines.append(f"{i}. {c.title}{due}")
+        lines.append("")
+
+    # Section 2: By Objective
+    if data["by_objective"]:
+        for group in data["by_objective"]:
+            lines.append(f"## {group['objective_title']}")
+            for c in group["commitments"]:
+                due = ""
+                if c.due_at:
+                    due = f" (due {c.due_at.strftime('%b %d')})"
+                lines.append(f"- {c.title}{due}")
+            lines.append("")
+
+    # Section 3: Ungrouped by urgency
+    if data["ungrouped"]:
+        for group in data["ungrouped"]:
+            lines.append(f"## {group['group_label']}")
+            for c in group["commitments"]:
+                due = ""
+                if c.due_at:
+                    due = f" (due {c.due_at.strftime('%b %d')})"
+                lines.append(f"- {c.title}{due}")
+            lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def query_commitments(
     db: Session,
     *,

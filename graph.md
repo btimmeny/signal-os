@@ -277,11 +277,11 @@ Client (ChatGPT / curl / etc.)
 ```
                         /
                         │
-          ┌─────────────┼──────────────┬──────────────┐
-          │             │              │              │
-      /health     /commitments     /objectives    /status
-      (GET)           │                │              │
-      [no auth]       │                │              │
+          ┌─────────────┼──────────────┬──────────────┬──────────┐
+          │             │              │              │          │
+      /health     /commitments     /objectives    /status   /tasks
+      (GET)           │                │              │       (GET)
+      [no auth]       │                │              │  [plain text]
                       │                │              │
              ┌────────┼────────┐       │              │
              │        │        │       │              │
