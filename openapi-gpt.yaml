@@ -1,0 +1,856 @@
+openapi: 3.1.0
+info:
+  title: Signal OS
+  description: >
+    Personal commitment log. When the user asks to see tasks, call GET /tasks
+    and display the returned text EXACTLY as-is. Do not reformat or flatten it.
+    NEVER fabricate tasks from memory. NEVER omit any tasks.
+  version: 0.1.0
+
+servers:
+  - url: https://signal-os-api-production.up.railway.app
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    CommitmentOpenRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        person:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        channel_type:
+          type: string
+          enum: [email, slack, meeting, call, text, web, other]
+          nullable: true
+        channel_title:
+          type: string
+          nullable: true
+        channel_link:
+          type: string
+          nullable: true
+        urgency:
+          type: string
+          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        source_snippet:
+          type: string
+          nullable: true
+        priority_order:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [OPEN, WAITING, SNOOZED, CLOSED]
+          default: OPEN
+
+    CommitmentCloseRequest:
+      type: object
+      properties:
+        commitment_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        person:
+          type: string
+          nullable: true
+
+    CommitmentUpdateRequest:
+      type: object
+      required: [commitment_id]
+      properties:
+        commitment_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [OPEN, WAITING, SNOOZED, CLOSED]
+          nullable: true
+        urgency:
+          type: string
+          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
+          nullable: true
+        person:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        channel_type:
+          type: string
+          enum: [email, slack, meeting, call, text, web, other]
+          nullable: true
+        channel_title:
+          type: string
+          nullable: true
+        channel_link:
+          type: string
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        source_snippet:
+          type: string
+          nullable: true
+        priority_order:
+          type: integer
+          nullable: true
+
+    CommitmentSetPriorityRequest:
+      type: object
+      required: [commitment_id, priority_order]
+      properties:
+        commitment_id:
+          type: string
+        priority_order:
+          type: integer
+          minimum: 1
+
+    Commitment:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [OPEN, WAITING, SNOOZED, CLOSED]
+        urgency:
+          type: string
+          enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
+          nullable: true
+        person:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        channel_type:
+          type: string
+          nullable: true
+        channel_title:
+          type: string
+          nullable: true
+        channel_link:
+          type: string
+          nullable: true
+        source_snippet:
+          type: string
+          nullable: true
+        opened_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_touched_at:
+          type: string
+          format: date-time
+        priority_order:
+          type: integer
+          nullable: true
+        days_open:
+          type: number
+
+    CommentCreateRequest:
+      type: object
+      required: [commitment_id, body]
+      properties:
+        commitment_id:
+          type: string
+        body:
+          type: string
+          minLength: 1
+        author:
+          type: string
+          nullable: true
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        commitment_id:
+          type: string
+        body:
+          type: string
+        author:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ObjectiveCreateRequest:
+      type: object
+      required: [title, year]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        year:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          default: ACTIVE
+
+    ObjectiveUpdateRequest:
+      type: object
+      required: [objective_id]
+      properties:
+        objective_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          nullable: true
+
+    Objective:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        year:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ObjectiveLinkRequest:
+      type: object
+      required: [objective_id, commitment_id]
+      properties:
+        objective_id:
+          type: string
+        commitment_id:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+
+    ObjectiveLink:
+      type: object
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        commitment_id:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ObjectiveUpdateCreateRequest:
+      type: object
+      required: [objective_id, body]
+      properties:
+        objective_id:
+          type: string
+        body:
+          type: string
+          minLength: 1
+        author:
+          type: string
+          nullable: true
+
+    ObjectiveUpdateNote:
+      type: object
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        body:
+          type: string
+        author:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    StatusReportCreateRequest:
+      type: object
+      required: [period_type, period_start, period_end, body]
+      properties:
+        period_type:
+          type: string
+          enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        body:
+          type: string
+          minLength: 1
+
+    StatusReport:
+      type: object
+      properties:
+        id:
+          type: string
+        period_type:
+          type: string
+          enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    StatusDataRequest:
+      type: object
+      required: [period_type, period_start, period_end]
+      properties:
+        period_type:
+          type: string
+          enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+
+paths:
+  /tasks:
+    get:
+      operationId: getFormattedTaskList
+      summary: Show all tasks as pre-formatted text
+      description: >
+        Returns all open tasks as pre-formatted markdown. Display the
+        response EXACTLY as-is. Do not reformat or flatten it.
+      responses:
+        "200":
+          description: Pre-formatted markdown task list
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /commitments/open:
+    post:
+      operationId: openCommitment
+      summary: Create a new commitment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentOpenRequest"
+      responses:
+        "200":
+          description: Created commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+
+  /commitments/close:
+    post:
+      operationId: closeCommitment
+      summary: Close a commitment by ID or title match
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentCloseRequest"
+      responses:
+        "200":
+          description: Closed commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+        "409":
+          description: Multiple matches — provide commitment_id
+
+  /commitments/update:
+    post:
+      operationId: updateCommitment
+      summary: Update commitment fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentUpdateRequest"
+      responses:
+        "200":
+          description: Updated commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+
+  /commitments/query:
+    get:
+      operationId: queryCommitments
+      summary: Query commitments with filters
+      parameters:
+        - name: person
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, WAITING, SNOOZED, CLOSED]
+        - name: urgency
+          in: query
+          schema:
+            type: string
+            enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
+        - name: channel_type
+          in: query
+          schema:
+            type: string
+        - name: due_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: due_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: opened_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: opened_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: text
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching commitments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Commitment"
+
+  /commitments/set_priority:
+    post:
+      operationId: setCommitmentPriority
+      summary: Set a commitment's priority position
+      description: >
+        Assigns priority_order (1 = top). Other items shift automatically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitmentSetPriorityRequest"
+      responses:
+        "200":
+          description: Updated commitment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Commitment"
+
+  /commitments/comment:
+    post:
+      operationId: addComment
+      summary: Add a comment to a commitment
+      description: >
+        Record a status update, meeting note, or context on a commitment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentCreateRequest"
+      responses:
+        "200":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "404":
+          description: Commitment not found
+
+  /commitments/comments:
+    get:
+      operationId: listComments
+      summary: List all comments for a commitment
+      parameters:
+        - name: commitment_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "404":
+          description: Commitment not found
+
+  /commitments/objectives:
+    get:
+      operationId: listObjectivesForCommitment
+      summary: List objectives linked to a commitment
+      parameters:
+        - name: commitment_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of objective links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveLink"
+
+  /objectives/create:
+    post:
+      operationId: createObjective
+      summary: Create a strategic objective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveCreateRequest"
+      responses:
+        "200":
+          description: Created objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+
+  /objectives/update:
+    post:
+      operationId: updateObjective
+      summary: Update an objective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveUpdateRequest"
+      responses:
+        "200":
+          description: Updated objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+        "404":
+          description: Objective not found
+
+  /objectives/list:
+    get:
+      operationId: listObjectives
+      summary: List strategic objectives
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+      responses:
+        "200":
+          description: List of objectives
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Objective"
+
+  /objectives/get:
+    get:
+      operationId: getObjective
+      summary: Get a single objective by ID
+      parameters:
+        - name: objective_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Objective"
+        "404":
+          description: Objective not found
+
+  /objectives/link:
+    post:
+      operationId: linkCommitmentToObjective
+      summary: Link a commitment to a strategic objective
+      description: >
+        Idempotent — relinking updates the rationale.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveLinkRequest"
+      responses:
+        "200":
+          description: Created or updated link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectiveLink"
+        "404":
+          description: Objective or commitment not found
+
+  /objectives/unlink:
+    post:
+      operationId: unlinkCommitmentFromObjective
+      summary: Remove link between commitment and objective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveLinkRequest"
+      responses:
+        "200":
+          description: Link removed
+        "404":
+          description: Link not found
+
+  /objectives/links:
+    get:
+      operationId: listLinksForObjective
+      summary: List commitments linked to an objective
+      parameters:
+        - name: objective_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of commitment links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveLink"
+
+  /objectives/update_note:
+    post:
+      operationId: addObjectiveUpdate
+      summary: Add commentary/update to an objective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObjectiveUpdateCreateRequest"
+      responses:
+        "200":
+          description: Created update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectiveUpdateNote"
+        "404":
+          description: Objective not found
+
+  /objectives/updates:
+    get:
+      operationId: listObjectiveUpdates
+      summary: List all updates for an objective
+      parameters:
+        - name: objective_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of updates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObjectiveUpdateNote"
+
+  /status/report:
+    post:
+      operationId: createStatusReport
+      summary: Store a status report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusReportCreateRequest"
+      responses:
+        "200":
+          description: Created report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusReport"
+    get:
+      operationId: getStatusReport
+      summary: Get a status report by ID
+      parameters:
+        - name: report_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusReport"
+        "404":
+          description: Report not found
+
+  /status/reports:
+    get:
+      operationId: listStatusReports
+      summary: List status reports
+      parameters:
+        - name: period_type
+          in: query
+          schema:
+            type: string
+            enum: [WEEKLY, MONTHLY, QUARTERLY, ANNUAL]
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusReport"
+
+  /status/data:
+    post:
+      operationId: gatherStatusData
+      summary: Gather data for a status report
+      description: >
+        Returns objectives, linked commitments, comments, updates,
+        and activity for a period. Use to compose status narratives.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusDataRequest"
+      responses:
+        "200":
+          description: Aggregated status data
+          content:
+            application/json:
+              schema:
+                type: object
