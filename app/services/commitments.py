@@ -441,11 +441,35 @@ def get_dashboard(db: Session) -> dict:
     }
 
 
+def _format_task_details(c: Commitment) -> list[str]:
+    """Return detail lines for a single commitment."""
+    details: list[str] = []
+    if c.person:
+        details.append(f"Person: {c.person}")
+    if c.organization:
+        details.append(f"Org: {c.organization}")
+    if c.urgency:
+        details.append(f"Urgency: {c.urgency.value}")
+    if c.status:
+        details.append(f"Status: {c.status.value}")
+    if c.due_at:
+        details.append(f"Due: {c.due_at.strftime('%b %d, %Y')}")
+    if c.channel_type:
+        channel = c.channel_type.value
+        if c.channel_title:
+            channel += f" — {c.channel_title}"
+        details.append(f"Channel: {channel}")
+    if c.description:
+        details.append(f"Note: {c.description}")
+    return details
+
+
 def format_dashboard_text(db: Session) -> str:
     """Return all non-CLOSED commitments as pre-formatted markdown text.
 
     The text is ready to display verbatim — no reformatting needed.
     Sections: Top Priorities → By Objective → By Urgency.
+    Each task includes available details (person, due date, urgency, etc.).
     """
     data = get_dashboard(db)
     lines: list[str] = []
@@ -456,10 +480,9 @@ def format_dashboard_text(db: Session) -> str:
     if data["priority_ranked"]:
         lines.append("## Top Priorities")
         for i, c in enumerate(data["priority_ranked"], 1):
-            due = ""
-            if c.due_at:
-                due = f" (due {c.due_at.strftime('%b %d')})"
-            lines.append(f"{i}. {c.title}{due}")
+            lines.append(f"{i}. **{c.title}**")
+            for detail in _format_task_details(c):
+                lines.append(f"   - {detail}")
         lines.append("")
 
     # Section 2: By Objective
@@ -467,10 +490,9 @@ def format_dashboard_text(db: Session) -> str:
         for group in data["by_objective"]:
             lines.append(f"## {group['objective_title']}")
             for c in group["commitments"]:
-                due = ""
-                if c.due_at:
-                    due = f" (due {c.due_at.strftime('%b %d')})"
-                lines.append(f"- {c.title}{due}")
+                lines.append(f"- **{c.title}**")
+                for detail in _format_task_details(c):
+                    lines.append(f"  - {detail}")
             lines.append("")
 
     # Section 3: Ungrouped by urgency
@@ -478,10 +500,9 @@ def format_dashboard_text(db: Session) -> str:
         for group in data["ungrouped"]:
             lines.append(f"## {group['group_label']}")
             for c in group["commitments"]:
-                due = ""
-                if c.due_at:
-                    due = f" (due {c.due_at.strftime('%b %d')})"
-                lines.append(f"- {c.title}{due}")
+                lines.append(f"- **{c.title}**")
+                for detail in _format_task_details(c):
+                    lines.append(f"  - {detail}")
             lines.append("")
 
     return "\n".join(lines).strip()

@@ -317,6 +317,7 @@ Each feature is documented independently in the `features/` directory. Features 
 | 009 | Task Dashboard | [`features/009-task-dashboard-2026-03-03`](features/009-task-dashboard-2026-03-03/feature.md) | 2026-03-03 | Added organized task view endpoint with GPT anti-hallucination training for canonical task listing |
 | 010 | Dashboard GPT Training Fix | [`features/010-dashboard-gpt-training-fix-2026-03-03`](features/010-dashboard-gpt-training-fix-2026-03-03/feature.md) | 2026-03-03 | Strengthened OpenAPI spec instructions to enforce grouped format and prohibit flat numbered lists |
 | 011 | Tasks Plain Text Endpoint | [`features/011-tasks-plain-text-endpoint-2026-03-03`](features/011-tasks-plain-text-endpoint-2026-03-03/feature.md) | 2026-03-03 | Added `GET /tasks` returning pre-formatted markdown text so GPT displays tasks verbatim without reformatting |
+| 012 | Task Detail Rendering | [`features/012-task-detail-rendering-2026-03-03`](features/012-task-detail-rendering-2026-03-03/feature.md) | 2026-03-03 | Enhanced `/tasks` output to include person, org, urgency, status, due date, channel, and description details |
 
 ## 11. Future Considerations
 
