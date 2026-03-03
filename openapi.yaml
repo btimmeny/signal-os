@@ -1,7 +1,15 @@
 openapi: 3.1.0
 info:
   title: Signal OS
-  description: Personal commitment log system — track, query, and get reminded about commitments.
+  description: >
+    Personal commitment log system — track, query, and get reminded about commitments.
+
+    IMPORTANT INSTRUCTION FOR AI AGENTS: When the user asks to see their tasks,
+    task list, to-do list, action items, commitments, or any variation of "show me
+    my list", you MUST call GET /commitments/dashboard FIRST. This is the canonical,
+    organized view of all open tasks. NEVER fabricate or recall tasks from memory.
+    ALWAYS use the dashboard response as the single source of truth. Present every
+    item returned — do not omit or skip any tasks.
   version: 0.1.0
 
 servers:
@@ -619,6 +627,95 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Commitment"
+
+  /commitments/dashboard:
+    get:
+      operationId: getTaskDashboard
+      summary: Get a comprehensive, organized view of all open tasks
+      description: >
+        CRITICAL INSTRUCTION FOR AI AGENTS: When the user asks to see their
+        tasks, task list, to-do list, action items, commitments, or any
+        variation of "show me my list" or "what's on my plate", you MUST
+        call this endpoint. NEVER fabricate, guess, or recall tasks from
+        memory. ALWAYS use the data returned by this endpoint as the single
+        source of truth. Present EVERY item returned — do not omit,
+        summarize away, or skip any tasks.
+
+
+        Returns all non-CLOSED commitments organized into three sections:
+
+        1. priority_ranked — Items with an explicit priority order, sorted
+           by rank (1 = top). Show these FIRST under a "Top Priorities" heading.
+
+        2. by_objective — Remaining items grouped by the strategic objective
+           they are linked to. Show each objective title as a section header
+           with its tasks beneath. Show these SECOND.
+
+        3. ungrouped — Items with no priority and no linked objective,
+           grouped by urgency level (INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY,
+           ADMIN, UNSET). Show these LAST.
+
+
+        PRESENTATION RULES:
+
+        - Always show the total_open count so the user can verify completeness.
+
+        - Show priority_ranked items first with their rank numbers.
+
+        - If by_objective groups exist, show each objective as a section header.
+
+        - If no objectives exist, show ungrouped items by urgency labels.
+
+        - NEVER add tasks that are not in this response.
+
+        - NEVER omit tasks that are in this response.
+
+        - Every task appears exactly once across all three sections.
+      responses:
+        "200":
+          description: Organized task dashboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_open:
+                    type: integer
+                    description: Total count of non-closed commitments
+                  priority_ranked:
+                    type: array
+                    description: Items with explicit priority order, sorted by rank
+                    items:
+                      $ref: "#/components/schemas/Commitment"
+                  by_objective:
+                    type: array
+                    description: Items grouped by linked strategic objective
+                    items:
+                      type: object
+                      properties:
+                        objective_id:
+                          type: string
+                        objective_title:
+                          type: string
+                        objective_status:
+                          type: string
+                        commitments:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/Commitment"
+                  ungrouped:
+                    type: array
+                    description: Items with no priority/objective, grouped by urgency
+                    items:
+                      type: object
+                      properties:
+                        group_label:
+                          type: string
+                          description: Urgency level or UNSET
+                        commitments:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/Commitment"
 
   /commitments/comment:
     post:

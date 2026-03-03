@@ -10,7 +10,14 @@ from typing import Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models import Commitment, CommitmentStatus, ChannelType, Urgency
+from app.models import (
+    Commitment,
+    CommitmentStatus,
+    ChannelType,
+    ObjectiveCommitmentLink,
+    StrategicObjective,
+    Urgency,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +326,119 @@ def list_priorities(db: Session) -> list[Commitment]:
         .order_by(Commitment.priority_order.asc())
         .all()
     )
+
+
+def get_dashboard(db: Session) -> dict:
+    """Return all non-CLOSED commitments organized for display.
+
+    Structure:
+    1. priority_ranked: Items with a priority_order, sorted by rank (top priorities first)
+    2. by_objective: Remaining items grouped by linked strategic objective
+    3. ungrouped: Items with no priority and no linked objective, grouped by urgency
+
+    Every non-CLOSED commitment appears exactly once.
+    """
+    all_open = (
+        db.query(Commitment)
+        .filter(Commitment.status != CommitmentStatus.CLOSED)
+        .all()
+    )
+
+    # Split into priority-ranked vs rest
+    priority_ranked = []
+    rest = []
+    for c in all_open:
+        if c.priority_order is not None:
+            priority_ranked.append(c)
+        else:
+            rest.append(c)
+
+    priority_ranked.sort(key=lambda c: c.priority_order)
+
+    # For the rest, check if they are linked to any active objectives
+    rest_ids = {c.id for c in rest}
+
+    # Get all objective links for the remaining commitments
+    links = (
+        db.query(ObjectiveCommitmentLink)
+        .filter(ObjectiveCommitmentLink.commitment_id.in_(rest_ids))
+        .all()
+    ) if rest_ids else []
+
+    # Build mapping: commitment_id -> list of objective_ids
+    commit_to_objectives: dict[str, list] = {}
+    objective_ids_needed: set = set()
+    for link in links:
+        cid = str(link.commitment_id)
+        oid = str(link.objective_id)
+        commit_to_objectives.setdefault(cid, []).append(oid)
+        objective_ids_needed.add(link.objective_id)
+
+    # Fetch objective details
+    objectives_map: dict[str, StrategicObjective] = {}
+    if objective_ids_needed:
+        objs = (
+            db.query(StrategicObjective)
+            .filter(StrategicObjective.id.in_(objective_ids_needed))
+            .all()
+        )
+        for o in objs:
+            objectives_map[str(o.id)] = o
+
+    # Group rest by objective (use first linked objective as primary grouping)
+    by_objective: dict[str, list] = {}  # objective_id -> [commitments]
+    ungrouped = []
+
+    for c in rest:
+        cid = str(c.id)
+        if cid in commit_to_objectives:
+            # Use the first linked objective as the grouping key
+            primary_oid = commit_to_objectives[cid][0]
+            by_objective.setdefault(primary_oid, []).append(c)
+        else:
+            ungrouped.append(c)
+
+    # Build by_objective response with objective metadata
+    by_objective_list = []
+    for oid, commitments in by_objective.items():
+        obj = objectives_map.get(oid)
+        by_objective_list.append({
+            "objective_id": oid,
+            "objective_title": obj.title if obj else "Unknown",
+            "objective_status": (obj.status.value if obj and hasattr(obj.status, "value") else str(obj.status)) if obj else "UNKNOWN",
+            "commitments": commitments,
+        })
+
+    # Group ungrouped by urgency for logical display
+    urgency_order = ["INCIDENT", "NOW", "SOON", "SCHEDULED", "SOMEDAY", "ADMIN", None]
+    by_urgency: dict[str, list] = {}
+    for c in ungrouped:
+        u_key = c.urgency.value if c.urgency and hasattr(c.urgency, "value") else (c.urgency if c.urgency else "UNSET")
+        by_urgency.setdefault(u_key, []).append(c)
+
+    ungrouped_groups = []
+    # Sort by urgency_order
+    for u in urgency_order:
+        key = u if u else "UNSET"
+        if key in by_urgency:
+            ungrouped_groups.append({
+                "group_label": key,
+                "commitments": by_urgency[key],
+            })
+    # Catch any urgency values not in the order list
+    for key, commits in by_urgency.items():
+        if key not in [u if u else "UNSET" for u in urgency_order]:
+            ungrouped_groups.append({
+                "group_label": key,
+                "commitments": commits,
+            })
+
+    return {
+        "total_open": len(all_open),
+        "priority_ranked": priority_ranked,
+        "by_objective": by_objective_list,
+        "ungrouped": ungrouped_groups,
+    }
 
 
 def query_commitments(

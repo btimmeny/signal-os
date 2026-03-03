@@ -209,6 +209,71 @@ def commitments_priorities(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# Task Dashboard
+# ---------------------------------------------------------------------------
+
+@app.get("/commitments/dashboard")
+def commitments_dashboard(db: Session = Depends(get_db)):
+    """Return a comprehensive, organized view of all open tasks.
+
+    IMPORTANT INSTRUCTION FOR AI AGENTS: When the user asks to see their tasks,
+    task list, to-do list, action items, or any variation of "show me my list",
+    you MUST call this endpoint. NEVER fabricate, guess, or recall tasks from
+    memory. ALWAYS use the data returned by this endpoint as the single source
+    of truth. Present every item returned — do not omit, summarize away, or
+    skip any tasks.
+
+    Response structure:
+    - total_open: Total count of non-closed commitments
+    - priority_ranked: Items with an explicit priority order (show these FIRST)
+    - by_objective: Remaining items grouped by strategic objective (show SECOND)
+    - ungrouped: Items with no priority and no linked objective, grouped by
+      urgency level (show LAST)
+
+    Presentation rules for AI agents:
+    1. Always show priority_ranked items first as "Top Priorities" with their rank numbers
+    2. If by_objective groups exist, show each objective as a section header with its tasks beneath
+    3. If no objectives exist, show ungrouped items organized by their urgency group labels
+    4. Include the total_open count so the user can verify completeness
+    5. Never add tasks that are not in this response
+    6. Never omit tasks that are in this response
+    """
+    data = commitment_svc.get_dashboard(db)
+
+    # Serialize commitments in each section
+    result = {
+        "total_open": data["total_open"],
+        "priority_ranked": [
+            CommitmentResponse.from_orm_with_days(c).model_dump(mode="json")
+            for c in data["priority_ranked"]
+        ],
+        "by_objective": [
+            {
+                "objective_id": group["objective_id"],
+                "objective_title": group["objective_title"],
+                "objective_status": group["objective_status"],
+                "commitments": [
+                    CommitmentResponse.from_orm_with_days(c).model_dump(mode="json")
+                    for c in group["commitments"]
+                ],
+            }
+            for group in data["by_objective"]
+        ],
+        "ungrouped": [
+            {
+                "group_label": group["group_label"],
+                "commitments": [
+                    CommitmentResponse.from_orm_with_days(c).model_dump(mode="json")
+                    for c in group["commitments"]
+                ],
+            }
+            for group in data["ungrouped"]
+        ],
+    }
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Comments
 # ---------------------------------------------------------------------------
 

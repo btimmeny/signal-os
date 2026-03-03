@@ -628,3 +628,164 @@ def test_query_by_text(client):
     items = r.json()
     assert len(items) == 1
     assert "PR #42" in items[0]["title"]
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_empty(client):
+    """Dashboard with no commitments returns empty sections."""
+    r = client.get("/commitments/dashboard", headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_open"] == 0
+    assert data["priority_ranked"] == []
+    assert data["by_objective"] == []
+    assert data["ungrouped"] == []
+
+
+def test_dashboard_priority_ranked_first(client):
+    """Items with priority_order appear in priority_ranked, sorted by rank."""
+    # Create 3 items, 2 with priority
+    client.post("/commitments/open", json={"title": "Task A", "priority_order": 2}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Task B", "priority_order": 1}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Task C"}, headers=HEADERS)
+
+    r = client.get("/commitments/dashboard", headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["total_open"] == 3
+    assert len(data["priority_ranked"]) == 2
+    # Task B should be first (priority 1), Task A second (priority 2)
+    assert data["priority_ranked"][0]["title"] == "Task B"
+    assert data["priority_ranked"][1]["title"] == "Task A"
+    # Task C should be in ungrouped (no priority, no objective)
+    ungrouped_titles = []
+    for group in data["ungrouped"]:
+        for c in group["commitments"]:
+            ungrouped_titles.append(c["title"])
+    assert "Task C" in ungrouped_titles
+
+
+def test_dashboard_grouped_by_objective(client):
+    """Items linked to objectives appear in by_objective section."""
+    # Create an objective
+    obj_r = client.post(
+        "/objectives/create",
+        json={"title": "Increase Revenue", "year": 2026},
+        headers=HEADERS,
+    )
+    obj_id = obj_r.json()["id"]
+
+    # Create commitments
+    c1 = client.post("/commitments/open", json={"title": "Close Acme deal"}, headers=HEADERS)
+    c1_id = c1.json()["id"]
+    client.post("/commitments/open", json={"title": "Unlinked task"}, headers=HEADERS)
+
+    # Link c1 to the objective
+    client.post(
+        "/objectives/link",
+        json={"objective_id": obj_id, "commitment_id": c1_id},
+        headers=HEADERS,
+    )
+
+    r = client.get("/commitments/dashboard", headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["total_open"] == 2
+    assert len(data["by_objective"]) == 1
+    assert data["by_objective"][0]["objective_title"] == "Increase Revenue"
+    assert data["by_objective"][0]["objective_id"] == obj_id
+    assert len(data["by_objective"][0]["commitments"]) == 1
+    assert data["by_objective"][0]["commitments"][0]["title"] == "Close Acme deal"
+
+    # Unlinked task should be in ungrouped
+    ungrouped_titles = []
+    for group in data["ungrouped"]:
+        for c in group["commitments"]:
+            ungrouped_titles.append(c["title"])
+    assert "Unlinked task" in ungrouped_titles
+
+
+def test_dashboard_ungrouped_by_urgency(client):
+    """Items without priority or objective are grouped by urgency."""
+    client.post("/commitments/open", json={"title": "Fire!", "urgency": "INCIDENT"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Soon thing", "urgency": "SOON"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Admin stuff", "urgency": "ADMIN"}, headers=HEADERS)
+
+    r = client.get("/commitments/dashboard", headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["total_open"] == 3
+    assert len(data["priority_ranked"]) == 0
+    assert len(data["by_objective"]) == 0
+
+    # Should have groups for INCIDENT, SOON, ADMIN
+    labels = [g["group_label"] for g in data["ungrouped"]]
+    assert "INCIDENT" in labels
+    assert "SOON" in labels
+    assert "ADMIN" in labels
+
+    # INCIDENT should come before SOON which should come before ADMIN
+    assert labels.index("INCIDENT") < labels.index("SOON")
+    assert labels.index("SOON") < labels.index("ADMIN")
+
+
+def test_dashboard_closed_items_excluded(client):
+    """Closed commitments do not appear in the dashboard."""
+    c_r = client.post("/commitments/open", json={"title": "Will close"}, headers=HEADERS)
+    c_id = c_r.json()["id"]
+    client.post("/commitments/open", json={"title": "Still open"}, headers=HEADERS)
+
+    # Close one
+    client.post("/commitments/close", json={"commitment_id": c_id}, headers=HEADERS)
+
+    r = client.get("/commitments/dashboard", headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["total_open"] == 1
+    all_titles = []
+    for c in data["priority_ranked"]:
+        all_titles.append(c["title"])
+    for group in data["by_objective"]:
+        for c in group["commitments"]:
+            all_titles.append(c["title"])
+    for group in data["ungrouped"]:
+        for c in group["commitments"]:
+            all_titles.append(c["title"])
+    assert "Still open" in all_titles
+    assert "Will close" not in all_titles
+
+
+def test_dashboard_no_duplicates(client):
+    """Each commitment appears exactly once even if linked to multiple objectives."""
+    # Create two objectives
+    obj1 = client.post("/objectives/create", json={"title": "Obj 1", "year": 2026}, headers=HEADERS)
+    obj2 = client.post("/objectives/create", json={"title": "Obj 2", "year": 2026}, headers=HEADERS)
+    obj1_id = obj1.json()["id"]
+    obj2_id = obj2.json()["id"]
+
+    # Create a commitment and link to both
+    c_r = client.post("/commitments/open", json={"title": "Multi-linked"}, headers=HEADERS)
+    c_id = c_r.json()["id"]
+    client.post("/objectives/link", json={"objective_id": obj1_id, "commitment_id": c_id}, headers=HEADERS)
+    client.post("/objectives/link", json={"objective_id": obj2_id, "commitment_id": c_id}, headers=HEADERS)
+
+    r = client.get("/commitments/dashboard", headers=HEADERS)
+    data = r.json()
+
+    assert data["total_open"] == 1
+    # Should appear in exactly one objective group (the first linked one)
+    total_items = 0
+    for group in data["by_objective"]:
+        total_items += len(group["commitments"])
+    for group in data["ungrouped"]:
+        total_items += len(group["commitments"])
+    total_items += len(data["priority_ranked"])
+    assert total_items == 1

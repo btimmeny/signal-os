@@ -291,8 +291,9 @@ Client (ChatGPT / curl / etc.)
              │                         │              │
        ┌─────┼─────────┬───────────┐   │              │
        │     │         │           │   │              │
-    /query /set_priority /priorities│   │              │
-    (GET)   (POST)       (GET)     │   │              │
+    /query /set_priority /priorities /dashboard
+    (GET)   (POST)       (GET)     (GET)
+                                   │   │              │
                                    │   │              │
                           ┌────────┘   │              │
                           │            │              │
