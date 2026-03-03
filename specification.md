@@ -298,7 +298,23 @@ The current WhatsApp integration is a mock that logs messages to the console. Th
 | `PORT` | `8300` | Server bind port |
 | `WORKER_INTERVAL` | `60` | Seconds between reminder worker poll cycles |
 
-## 10. Future Considerations
+## 10. Feature Index
+
+Each feature is documented independently in the `features/` directory. Features are numbered chronologically.
+
+| # | Feature | Folder | Date | Description |
+|---|---------|--------|------|-------------|
+| 001 | Incident Urgency | [`features/001-incident-urgency-2026-03-02`](features/001-incident-urgency-2026-03-02/feature.md) | 2026-03-02 | Added `INCIDENT` as the highest-priority urgency level (above `NOW`) for production-breaking issues |
+| 002 | Admin Urgency | [`features/002-admin-urgency-2026-03-02`](features/002-admin-urgency-2026-03-02/feature.md) | 2026-03-02 | Added `ADMIN` as the lowest-priority urgency level (below `SOMEDAY`) for "get it done when you can" tasks |
+| 003 | Priority Order | [`features/003-priority-order-2026-03-02`](features/003-priority-order-2026-03-02/feature.md) | 2026-03-02 | Added explicit `priority_order` ranking independent of urgency categories with automatic reordering |
+| 004 | Commitment Comments | [`features/004-commitment-comments-2026-03-02`](features/004-commitment-comments-2026-03-02/feature.md) | 2026-03-02 | Added timestamped comments on commitments for tracking history, meeting notes, and status updates |
+| 005 | Strategic Objectives | [`features/005-strategic-objectives-2026-03-02`](features/005-strategic-objectives-2026-03-02/feature.md) | 2026-03-02 | Added annual strategic objectives CRUD (create, update, list, get) |
+| 006 | Objective-Commitment Linking | [`features/006-objective-commitment-linking-2026-03-02`](features/006-objective-commitment-linking-2026-03-02/feature.md) | 2026-03-02 | Added many-to-many linking between commitments and objectives with rationale |
+| 007 | Objective Updates | [`features/007-objective-updates-2026-03-02`](features/007-objective-updates-2026-03-02/feature.md) | 2026-03-02 | Added general commentary/updates on objectives (not tied to specific tasks) |
+| 008 | Status Reporting | [`features/008-status-reporting-2026-03-02`](features/008-status-reporting-2026-03-02/feature.md) | 2026-03-02 | Added status report creation, listing, and aggregated data gathering for weekly/monthly/quarterly/annual periods |
+| 009 | Task Dashboard | [`features/009-task-dashboard-2026-03-03`](features/009-task-dashboard-2026-03-03/feature.md) | 2026-03-03 | Added organized task view endpoint with GPT anti-hallucination training for canonical task listing |
+
+## 11. Future Considerations
 
 - Replace mock WhatsApp sender with Twilio WhatsApp Business API
 - Add support for additional delivery channels (email, Slack, SMS)
