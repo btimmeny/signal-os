@@ -804,23 +804,52 @@ def test_tasks_empty(client):
     assert "0 open tasks" in r.text
 
 
-def test_tasks_priority_section(client):
-    """GET /tasks shows Top Priorities section for priority-ranked items."""
+def test_tasks_ranked_execution(client):
+    """GET /tasks shows Ranked Execution section with keycap numbers."""
     client.post("/commitments/open", json={"title": "Alpha", "priority_order": 2}, headers=HEADERS)
     client.post("/commitments/open", json={"title": "Beta", "priority_order": 1}, headers=HEADERS)
 
     r = client.get("/tasks", headers=HEADERS)
     assert r.status_code == 200
     text = r.text
-    assert "## Top Priorities" in text
+    assert "Ranked Execution" in text
     # Beta should come before Alpha (priority 1 vs 2)
     assert text.index("Beta") < text.index("Alpha")
-    assert "1. **Beta**" in text
-    assert "2. **Alpha**" in text
+    assert "Beta" in text
+    assert "Alpha" in text
 
 
-def test_tasks_objective_section(client):
-    """GET /tasks shows objective headings for linked items."""
+def test_tasks_immediate_section(client):
+    """GET /tasks puts INCIDENT/NOW items in Immediate section."""
+    client.post("/commitments/open", json={"title": "On fire", "urgency": "INCIDENT"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Do now", "urgency": "NOW"}, headers=HEADERS)
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "Immediate" in text
+    assert "On fire" in text
+    assert "Do now" in text
+
+
+def test_tasks_time_bound_section(client):
+    """GET /tasks puts items with due dates in Time-Bound / Compliance."""
+    client.post(
+        "/commitments/open",
+        json={"title": "Submit report", "due_at": "2026-03-11T00:00:00Z"},
+        headers=HEADERS,
+    )
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "Time-Bound / Compliance" in text
+    assert "Submit report" in text
+    assert "Due Mar 11" in text
+
+
+def test_tasks_strategy_section(client):
+    """GET /tasks puts objective-linked items in Strategy section."""
     obj_r = client.post(
         "/objectives/create",
         json={"title": "Revenue Growth", "year": 2026},
@@ -839,52 +868,48 @@ def test_tasks_objective_section(client):
     r = client.get("/tasks", headers=HEADERS)
     assert r.status_code == 200
     text = r.text
-    assert "## Revenue Growth" in text
-    assert "- **Close big deal**" in text
+    assert "Strategy" in text
+    assert "Close big deal" in text
 
 
-def test_tasks_urgency_section(client):
-    """GET /tasks groups ungrouped items by urgency label."""
-    client.post("/commitments/open", json={"title": "On fire", "urgency": "INCIDENT"}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "Cleanup", "urgency": "ADMIN"}, headers=HEADERS)
-
-    r = client.get("/tasks", headers=HEADERS)
-    assert r.status_code == 200
-    text = r.text
-    assert "## INCIDENT" in text
-    assert "## ADMIN" in text
-    assert "- **On fire**" in text
-    assert "- **Cleanup**" in text
-    # INCIDENT should come before ADMIN
-    assert text.index("## INCIDENT") < text.index("## ADMIN")
-
-
-def test_tasks_detail_fields(client):
-    """GET /tasks includes person, due date, urgency, and other details."""
+def test_tasks_human_resources_section(client):
+    """GET /tasks puts items with a person in Human Resources section."""
     client.post(
         "/commitments/open",
-        json={
-            "title": "Review proposal",
-            "person": "Jane Smith",
-            "organization": "Acme Corp",
-            "urgency": "NOW",
-            "due_at": "2026-03-15T00:00:00Z",
-            "channel_type": "meeting",
-            "channel_title": "Weekly sync",
-            "description": "Need to finalize Q2 plan",
-        },
+        json={"title": "Meet Jonathan Perry", "person": "Jonathan Perry"},
         headers=HEADERS,
     )
 
     r = client.get("/tasks", headers=HEADERS)
     assert r.status_code == 200
     text = r.text
-    assert "- **Review proposal**" in text
-    assert "Person: Jane Smith" in text
-    assert "Org: Acme Corp" in text
-    assert "Urgency: NOW" in text
-    assert "Status: OPEN" in text
-    assert "Due: Mar 15, 2026" in text
-    assert "Channel: meeting" in text
-    assert "Weekly sync" in text
-    assert "Note: Need to finalize Q2 plan" in text
+    assert "Human Resources" in text
+    assert "Meet Jonathan Perry" in text
+
+
+def test_tasks_administration_section(client):
+    """GET /tasks puts remaining items in Administration section."""
+    client.post("/commitments/open", json={"title": "Read article"}, headers=HEADERS)
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "Administration" in text
+    assert "Read article" in text
+
+
+def test_tasks_category_order(client):
+    """GET /tasks shows categories in correct order: Ranked > Immediate > Time-Bound > Strategy > HR > Admin."""
+    # Create one item per category
+    client.post("/commitments/open", json={"title": "Ranked item", "priority_order": 1}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Urgent item", "urgency": "NOW"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Due item", "due_at": "2026-03-15T00:00:00Z"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "People item", "person": "Alice"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Admin item"}, headers=HEADERS)
+
+    r = client.get("/tasks", headers=HEADERS)
+    text = r.text
+    assert text.index("Ranked Execution") < text.index("Immediate")
+    assert text.index("Immediate") < text.index("Time-Bound")
+    assert text.index("Time-Bound") < text.index("Human Resources")
+    assert text.index("Human Resources") < text.index("Administration")

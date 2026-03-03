@@ -441,69 +441,131 @@ def get_dashboard(db: Session) -> dict:
     }
 
 
-def _format_task_details(c: Commitment) -> list[str]:
-    """Return detail lines for a single commitment."""
-    details: list[str] = []
-    if c.person:
-        details.append(f"Person: {c.person}")
-    if c.organization:
-        details.append(f"Org: {c.organization}")
-    if c.urgency:
-        details.append(f"Urgency: {c.urgency.value}")
-    if c.status:
-        details.append(f"Status: {c.status.value}")
+_KEYCAP_DIGITS = [
+    "1\ufe0f\u20e3", "2\ufe0f\u20e3", "3\ufe0f\u20e3", "4\ufe0f\u20e3",
+    "5\ufe0f\u20e3", "6\ufe0f\u20e3", "7\ufe0f\u20e3", "8\ufe0f\u20e3",
+    "9\ufe0f\u20e3", "\U0001f51f",
+]
+
+
+def _keycap(n: int) -> str:
+    """Return the keycap emoji for 1-10, or fall back to plain number."""
+    if 1 <= n <= len(_KEYCAP_DIGITS):
+        return _KEYCAP_DIGITS[n - 1]
+    return f"{n}."
+
+
+def _due_suffix(c: Commitment) -> str:
+    """Return ' — Due Mon DD' string if the commitment has a due date."""
     if c.due_at:
-        details.append(f"Due: {c.due_at.strftime('%b %d, %Y')}")
-    if c.channel_type:
-        channel = c.channel_type.value
-        if c.channel_title:
-            channel += f" — {c.channel_title}"
-        details.append(f"Channel: {channel}")
-    if c.description:
-        details.append(f"Note: {c.description}")
-    return details
+        return f" — Due {c.due_at.strftime('%b %d')}"
+    return ""
 
 
 def format_dashboard_text(db: Session) -> str:
     """Return all non-CLOSED commitments as pre-formatted markdown text.
 
     The text is ready to display verbatim — no reformatting needed.
-    Sections: Top Priorities → By Objective → By Urgency.
-    Each task includes available details (person, due date, urgency, etc.).
+    Categories (in order):
+      1. Ranked Execution — items with priority_order
+      2. Immediate — urgency INCIDENT or NOW
+      3. Time-Bound / Compliance — items with a due date
+      4. Strategy — items linked to a strategic objective
+      5. Human Resources — items with a person assigned
+      6. Administration — everything else
+    Each task appears in exactly one category (first match wins).
     """
-    data = get_dashboard(db)
+    all_open = (
+        db.query(Commitment)
+        .filter(Commitment.status != CommitmentStatus.CLOSED)
+        .all()
+    )
+
+    if not all_open:
+        return "**0 open tasks**"
+
+    # Fetch objective links for categorisation
+    all_ids = {c.id for c in all_open}
+    links = (
+        db.query(ObjectiveCommitmentLink)
+        .filter(ObjectiveCommitmentLink.commitment_id.in_(all_ids))
+        .all()
+    ) if all_ids else []
+
+    linked_commitment_ids: set = set()
+    for link in links:
+        linked_commitment_ids.add(str(link.commitment_id))
+
+    # Categorise — each commitment goes into exactly one bucket
+    ranked: list[Commitment] = []
+    immediate: list[Commitment] = []
+    time_bound: list[Commitment] = []
+    strategy: list[Commitment] = []
+    human_resources: list[Commitment] = []
+    administration: list[Commitment] = []
+
+    for c in all_open:
+        cid = str(c.id)
+        urgency_val = c.urgency.value if c.urgency and hasattr(c.urgency, "value") else (c.urgency or "")
+
+        if c.priority_order is not None:
+            ranked.append(c)
+        elif urgency_val in ("INCIDENT", "NOW"):
+            immediate.append(c)
+        elif c.due_at is not None:
+            time_bound.append(c)
+        elif cid in linked_commitment_ids:
+            strategy.append(c)
+        elif c.person:
+            human_resources.append(c)
+        else:
+            administration.append(c)
+
+    ranked.sort(key=lambda c: c.priority_order)
+
     lines: list[str] = []
 
-    lines.append(f"**{data['total_open']} open tasks**\n")
-
-    # Section 1: Top Priorities
-    if data["priority_ranked"]:
-        lines.append("## Top Priorities")
-        for i, c in enumerate(data["priority_ranked"], 1):
-            lines.append(f"{i}. **{c.title}**")
-            for detail in _format_task_details(c):
-                lines.append(f"   - {detail}")
+    # 🎯 Ranked Execution
+    if ranked:
+        lines.append("\U0001f3af Ranked Execution")
+        for i, c in enumerate(ranked, 1):
+            lines.append(f"{_keycap(i)} {c.title}{_due_suffix(c)}")
         lines.append("")
 
-    # Section 2: By Objective
-    if data["by_objective"]:
-        for group in data["by_objective"]:
-            lines.append(f"## {group['objective_title']}")
-            for c in group["commitments"]:
-                lines.append(f"- **{c.title}**")
-                for detail in _format_task_details(c):
-                    lines.append(f"  - {detail}")
-            lines.append("")
+    # 🔥 Immediate
+    if immediate:
+        lines.append("\U0001f525 Immediate")
+        for c in immediate:
+            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+        lines.append("")
 
-    # Section 3: Ungrouped by urgency
-    if data["ungrouped"]:
-        for group in data["ungrouped"]:
-            lines.append(f"## {group['group_label']}")
-            for c in group["commitments"]:
-                lines.append(f"- **{c.title}**")
-                for detail in _format_task_details(c):
-                    lines.append(f"  - {detail}")
-            lines.append("")
+    # 📅 Time-Bound / Compliance
+    if time_bound:
+        lines.append("\U0001f4c5 Time-Bound / Compliance")
+        for c in time_bound:
+            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+        lines.append("")
+
+    # 🧠 Strategy
+    if strategy:
+        lines.append("\U0001f9e0 Strategy")
+        for c in strategy:
+            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+        lines.append("")
+
+    # 👥 Human Resources
+    if human_resources:
+        lines.append("\U0001f465 Human Resources")
+        for c in human_resources:
+            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+        lines.append("")
+
+    # 🤝 Administration
+    if administration:
+        lines.append("\U0001f91d Administration")
+        for c in administration:
+            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+        lines.append("")
 
     return "\n".join(lines).strip()
 
