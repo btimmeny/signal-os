@@ -638,10 +638,8 @@ paths:
       summary: List only priority-ranked commitments (subset)
       description: >
         Returns only non-CLOSED commitments that have a priority_order,
-        sorted from highest priority (1) to lowest. AI AGENTS: Do NOT use
-        this endpoint when the user asks to see their full task list. This
-        only returns priority-ranked items, not all tasks. Use
-        GET /commitments/dashboard instead for the complete organized view.
+        sorted from highest priority (1) to lowest. Only returns ranked
+        items, not all tasks. For the full task list, use GET /tasks.
       responses:
         "200":
           description: Priority-ordered list of commitments
@@ -657,14 +655,9 @@ paths:
       operationId: getFormattedTaskList
       summary: PREFERRED — Display all tasks as pre-formatted text
       description: >
-        Returns all non-CLOSED commitments as pre-formatted markdown text,
-        already organized into sections (Top Priorities, By Objective, By
-        Urgency). The response is plain text, not JSON.
-
-
-        AI AGENTS: Call this endpoint when the user asks for their task list.
-        Display the returned text EXACTLY as-is. Do not reformat, reorder,
-        flatten, or summarize it. The text is already in the correct format.
+        Returns all open tasks as pre-formatted markdown text with sections
+        (Top Priorities, By Objective, By Urgency). Plain text, not JSON.
+        Display the response EXACTLY as-is. Do not reformat or flatten it.
       responses:
         "200":
           description: Pre-formatted markdown task list
@@ -681,14 +674,9 @@ paths:
       operationId: getTaskDashboard
       summary: Structured JSON dashboard (use GET /tasks for display instead)
       description: >
-        Returns all non-CLOSED commitments as structured JSON organized into
-        three sections: priority_ranked, by_objective, and ungrouped.
-
-
-        AI AGENTS: For displaying tasks to the user, prefer GET /tasks which
-        returns pre-formatted markdown text ready to show verbatim. Use this
-        endpoint only when you need the structured JSON data for programmatic
-        processing.
+        Returns all open tasks as structured JSON in three sections:
+        priority_ranked, by_objective, and ungrouped. For displaying
+        tasks to users, prefer GET /tasks (pre-formatted text).
       responses:
         "200":
           description: Organized task dashboard
