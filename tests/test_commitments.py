@@ -815,8 +815,8 @@ def test_tasks_priority_section(client):
     assert "## Top Priorities" in text
     # Beta should come before Alpha (priority 1 vs 2)
     assert text.index("Beta") < text.index("Alpha")
-    assert "1. Beta" in text
-    assert "2. Alpha" in text
+    assert "1. **Beta**" in text
+    assert "2. **Alpha**" in text
 
 
 def test_tasks_objective_section(client):
@@ -840,7 +840,7 @@ def test_tasks_objective_section(client):
     assert r.status_code == 200
     text = r.text
     assert "## Revenue Growth" in text
-    assert "- Close big deal" in text
+    assert "- **Close big deal**" in text
 
 
 def test_tasks_urgency_section(client):
@@ -853,7 +853,38 @@ def test_tasks_urgency_section(client):
     text = r.text
     assert "## INCIDENT" in text
     assert "## ADMIN" in text
-    assert "- On fire" in text
-    assert "- Cleanup" in text
+    assert "- **On fire**" in text
+    assert "- **Cleanup**" in text
     # INCIDENT should come before ADMIN
     assert text.index("## INCIDENT") < text.index("## ADMIN")
+
+
+def test_tasks_detail_fields(client):
+    """GET /tasks includes person, due date, urgency, and other details."""
+    client.post(
+        "/commitments/open",
+        json={
+            "title": "Review proposal",
+            "person": "Jane Smith",
+            "organization": "Acme Corp",
+            "urgency": "NOW",
+            "due_at": "2026-03-15T00:00:00Z",
+            "channel_type": "meeting",
+            "channel_title": "Weekly sync",
+            "description": "Need to finalize Q2 plan",
+        },
+        headers=HEADERS,
+    )
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "- **Review proposal**" in text
+    assert "Person: Jane Smith" in text
+    assert "Org: Acme Corp" in text
+    assert "Urgency: NOW" in text
+    assert "Status: OPEN" in text
+    assert "Due: Mar 15, 2026" in text
+    assert "Channel: meeting" in text
+    assert "Weekly sync" in text
+    assert "Note: Need to finalize Q2 plan" in text
