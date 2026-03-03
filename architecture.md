@@ -110,6 +110,7 @@ The API layer delegates all business logic to the service layer. Routes are thin
   - `set_priority()` -- Set a commitment's priority_order with automatic reordering
   - `list_priorities()` -- All ranked commitments sorted by priority_order
   - `get_dashboard()` -- Comprehensive organized view: priority-ranked first, then by objective, then ungrouped by urgency
+  - `format_dashboard_text()` -- Pre-formatted markdown text of the dashboard for verbatim display by AI agents
   - `query_commitments()` -- Filtered search (person, status, urgency, channel, dates, text)
 
 - **`comments.py`** -- Commitment comment operations

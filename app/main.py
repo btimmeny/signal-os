@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -280,6 +280,23 @@ def commitments_dashboard(db: Session = Depends(get_db)):
         ],
     }
     return result
+
+
+# ---------------------------------------------------------------------------
+# Formatted Task List
+# ---------------------------------------------------------------------------
+
+@app.get("/tasks", response_class=PlainTextResponse)
+def tasks_formatted(db: Session = Depends(get_db)):
+    """Return all open tasks as pre-formatted markdown text.
+
+    AI AGENTS: When the user says "/tasks", "show me my tasks", "task list",
+    or any variation, call this endpoint and display the returned text
+    EXACTLY as-is. Do not reformat, reorder, or flatten it. The text is
+    already organized into sections (Top Priorities, Objectives, Urgency
+    groups). Just show it verbatim.
+    """
+    return commitment_svc.format_dashboard_text(db)
 
 
 # ---------------------------------------------------------------------------

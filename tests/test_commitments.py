@@ -789,3 +789,71 @@ def test_dashboard_no_duplicates(client):
         total_items += len(group["commitments"])
     total_items += len(data["priority_ranked"])
     assert total_items == 1
+
+
+# ---------------------------------------------------------------------------
+# Formatted Task List (/tasks)
+# ---------------------------------------------------------------------------
+
+
+def test_tasks_empty(client):
+    """GET /tasks with no commitments returns just the count line."""
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    assert "0 open tasks" in r.text
+
+
+def test_tasks_priority_section(client):
+    """GET /tasks shows Top Priorities section for priority-ranked items."""
+    client.post("/commitments/open", json={"title": "Alpha", "priority_order": 2}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Beta", "priority_order": 1}, headers=HEADERS)
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "## Top Priorities" in text
+    # Beta should come before Alpha (priority 1 vs 2)
+    assert text.index("Beta") < text.index("Alpha")
+    assert "1. Beta" in text
+    assert "2. Alpha" in text
+
+
+def test_tasks_objective_section(client):
+    """GET /tasks shows objective headings for linked items."""
+    obj_r = client.post(
+        "/objectives/create",
+        json={"title": "Revenue Growth", "year": 2026},
+        headers=HEADERS,
+    )
+    obj_id = obj_r.json()["id"]
+
+    c_r = client.post("/commitments/open", json={"title": "Close big deal"}, headers=HEADERS)
+    c_id = c_r.json()["id"]
+    client.post(
+        "/objectives/link",
+        json={"objective_id": obj_id, "commitment_id": c_id},
+        headers=HEADERS,
+    )
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "## Revenue Growth" in text
+    assert "- Close big deal" in text
+
+
+def test_tasks_urgency_section(client):
+    """GET /tasks groups ungrouped items by urgency label."""
+    client.post("/commitments/open", json={"title": "On fire", "urgency": "INCIDENT"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Cleanup", "urgency": "ADMIN"}, headers=HEADERS)
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "## INCIDENT" in text
+    assert "## ADMIN" in text
+    assert "- On fire" in text
+    assert "- Cleanup" in text
+    # INCIDENT should come before ADMIN
+    assert text.index("## INCIDENT") < text.index("## ADMIN")

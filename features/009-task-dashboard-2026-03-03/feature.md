@@ -51,7 +51,26 @@ This feature is read-only and queries existing tables (`commitments`, `objective
 
 ## API
 
-### `GET /commitments/dashboard`
+### `GET /tasks` (preferred for display)
+
+Returns pre-formatted markdown text ready to show verbatim. The GPT does not need to format or organize — just display the text as-is.
+
+**Response:** `text/plain`
+```
+**5 open tasks**
+
+## Top Priorities
+1. Launch Claude CLI
+2. Architecture & vTeam Plan
+
+## Revenue Growth
+- Close Acme deal
+
+## ADMIN
+- Read Cognition article
+```
+
+### `GET /commitments/dashboard` (structured JSON)
 
 **Response:**
 ```json
