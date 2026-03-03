@@ -2,9 +2,14 @@ openapi: 3.1.0
 info:
   title: Signal OS
   description: >
-    Personal commitment log. When the user asks to see tasks, call GET /tasks
-    and display the returned text EXACTLY as-is. Do not reformat or flatten it.
-    NEVER fabricate tasks from memory. NEVER omit any tasks.
+    Personal commitment log.
+    RULE 1: When the user asks to see tasks, call GET /tasks.
+    RULE 2: Display the returned text EXACTLY and COMPLETELY as-is.
+    RULE 3: NEVER rename, reword, or rearrange section headings.
+    RULE 4: NEVER add details, sub-bullets, dividers, or commentary.
+    RULE 5: NEVER reorder sections or move items between sections.
+    RULE 6: NEVER fabricate tasks from memory or omit any tasks.
+    The response is pre-formatted. Print it verbatim with zero changes.
   version: 0.1.0
 
 servers:
@@ -341,8 +346,8 @@ paths:
       operationId: getFormattedTaskList
       summary: Show all tasks as pre-formatted text
       description: >
-        Returns all open tasks as pre-formatted markdown. Display the
-        response EXACTLY as-is. Do not reformat or flatten it.
+        Print the response verbatim. Do NOT rename headings, add
+        details, reorder sections, or insert dividers.
       responses:
         "200":
           description: Pre-formatted markdown task list
