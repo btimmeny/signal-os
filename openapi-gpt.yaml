@@ -862,12 +862,12 @@ paths:
                   objectives:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/Objective"
                   commitments_opened:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/Commitment"
                   commitments_closed:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/Commitment"
