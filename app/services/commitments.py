@@ -10,10 +10,13 @@ from typing import Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+import re
+
 from app.models import (
     Commitment,
     CommitmentStatus,
     ChannelType,
+    InitiativeCommitmentLink,
     ObjectiveCommitmentLink,
     StrategicObjective,
     Urgency,
@@ -441,39 +444,70 @@ def get_dashboard(db: Session) -> dict:
     }
 
 
-_KEYCAP_DIGITS = [
-    "1\ufe0f\u20e3", "2\ufe0f\u20e3", "3\ufe0f\u20e3", "4\ufe0f\u20e3",
-    "5\ufe0f\u20e3", "6\ufe0f\u20e3", "7\ufe0f\u20e3", "8\ufe0f\u20e3",
-    "9\ufe0f\u20e3", "\U0001f51f",
-]
+# Urgency sort order (lower = higher priority)
+_URGENCY_ORDER = {
+    "INCIDENT": 0,
+    "NOW": 1,
+    "SOON": 2,
+    "SCHEDULED": 3,
+    "SOMEDAY": 4,
+    "ADMIN": 5,
+}
+
+_PRIORITY_RE = re.compile(r"Priority\s+(\d+)\.", re.IGNORECASE)
 
 
-def _keycap(n: int) -> str:
-    """Return the keycap emoji for 1-10, or fall back to plain number."""
-    if 1 <= n <= len(_KEYCAP_DIGITS):
-        return _KEYCAP_DIGITS[n - 1]
-    return f"{n}."
+def _urgency_rank(c: Commitment) -> int:
+    """Return numeric sort rank for a commitment's urgency."""
+    val = c.urgency.value if c.urgency and hasattr(c.urgency, "value") else (c.urgency or "")
+    return _URGENCY_ORDER.get(val, 99)
 
 
-def _due_suffix(c: Commitment) -> str:
-    """Return ' — Due Mon DD' string if the commitment has a due date."""
+def _person_str(c: Commitment) -> str:
+    """Return person string or em-dash if missing."""
+    return c.person if c.person else "\u2014"
+
+
+def _due_str(c: Commitment) -> str:
+    """Return formatted due date or em-dash if missing."""
     if c.due_at:
-        return f" — Due {c.due_at.strftime('%b %d')}"
-    return ""
+        return c.due_at.strftime("%b %-d")
+    return "\u2014"
+
+
+def _task_line_suffix(c: Commitment) -> str:
+    """Return ' (person, due)' suffix for a task line."""
+    return f" ({_person_str(c)}, {_due_str(c)})"
+
+
+def _extract_priority_number(c: Commitment) -> int:
+    """Extract priority number from description like 'Priority 1.' Returns 0 if none."""
+    if c.description:
+        m = _PRIORITY_RE.search(c.description)
+        if m:
+            return int(m.group(1))
+    return 0
+
+
+def _sort_key(c: Commitment, priority_number: int = 0) -> tuple:
+    """Multi-level sort key: priority number → urgency → due date → title."""
+    if c.due_at:
+        # Normalise to UTC-aware for comparison
+        due_sort = c.due_at if c.due_at.tzinfo else c.due_at.replace(tzinfo=timezone.utc)
+    else:
+        due_sort = datetime(9999, 12, 31, tzinfo=timezone.utc)
+    return (priority_number, _urgency_rank(c), due_sort, (c.title or "").lower())
 
 
 def format_dashboard_text(db: Session) -> str:
     """Return all non-CLOSED commitments as pre-formatted markdown text.
 
     The text is ready to display verbatim — no reformatting needed.
-    Categories (in order):
-      1. Ranked Execution — items with priority_order
-      2. Immediate — urgency INCIDENT or NOW
-      3. Time-Bound / Compliance — items with a due date
-      4. Strategy — items linked to a strategic objective
-      5. Human Resources — items with a person assigned
-      6. Administration — everything else
-    Each task appears in exactly one category (first match wins).
+    Three sections (in order):
+      1. Priority Execution — items whose description contains "Priority N."
+      2. Initiatives — items whose title begins with "Initiative:"
+      3. Everything Else — all remaining open tasks
+    Each task appears on a single line with (person, due date).
     """
     all_open = (
         db.query(Commitment)
@@ -482,89 +516,48 @@ def format_dashboard_text(db: Session) -> str:
     )
 
     if not all_open:
-        return "**0 open tasks**"
+        return "0 open tasks"
 
-    # Fetch objective links for categorisation
-    all_ids = {c.id for c in all_open}
-    links = (
-        db.query(ObjectiveCommitmentLink)
-        .filter(ObjectiveCommitmentLink.commitment_id.in_(all_ids))
-        .all()
-    ) if all_ids else []
-
-    linked_commitment_ids: set = set()
-    for link in links:
-        linked_commitment_ids.add(str(link.commitment_id))
-
-    # Categorise — each commitment goes into exactly one bucket
-    ranked: list[Commitment] = []
-    immediate: list[Commitment] = []
-    time_bound: list[Commitment] = []
-    strategy: list[Commitment] = []
-    human_resources: list[Commitment] = []
-    administration: list[Commitment] = []
+    # Categorise into three sections
+    priority_exec: list[tuple[int, Commitment]] = []  # (priority_number, commitment)
+    initiatives: list[Commitment] = []
+    everything_else: list[Commitment] = []
 
     for c in all_open:
-        cid = str(c.id)
-        urgency_val = c.urgency.value if c.urgency and hasattr(c.urgency, "value") else (c.urgency or "")
-
-        if c.priority_order is not None:
-            ranked.append(c)
-        elif urgency_val in ("INCIDENT", "NOW"):
-            immediate.append(c)
-        elif c.due_at is not None:
-            time_bound.append(c)
-        elif cid in linked_commitment_ids:
-            strategy.append(c)
-        elif c.person:
-            human_resources.append(c)
+        pnum = _extract_priority_number(c)
+        if pnum > 0:
+            priority_exec.append((pnum, c))
+        elif c.title and c.title.startswith("Initiative:"):
+            initiatives.append(c)
         else:
-            administration.append(c)
+            everything_else.append(c)
 
-    ranked.sort(key=lambda c: c.priority_order)
+    # Sort each section
+    priority_exec.sort(key=lambda pair: _sort_key(pair[1], pair[0]))
+    initiatives.sort(key=lambda c: _sort_key(c))
+    everything_else.sort(key=lambda c: _sort_key(c))
 
     lines: list[str] = []
 
-    # 🎯 Ranked Execution
-    if ranked:
-        lines.append("\U0001f3af Ranked Execution")
-        for i, c in enumerate(ranked, 1):
-            lines.append(f"{_keycap(i)} {c.title}{_due_suffix(c)}")
+    # Priority Execution
+    if priority_exec:
+        lines.append("Priority Execution")
+        for i, (pnum, c) in enumerate(priority_exec, 1):
+            lines.append(f"{i}. {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
-    # 🔥 Immediate
-    if immediate:
-        lines.append("\U0001f525 Immediate")
-        for c in immediate:
-            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+    # Initiatives
+    if initiatives:
+        lines.append("Initiatives")
+        for c in initiatives:
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
-    # 📅 Time-Bound / Compliance
-    if time_bound:
-        lines.append("\U0001f4c5 Time-Bound / Compliance")
-        for c in time_bound:
-            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
-        lines.append("")
-
-    # 🧠 Strategy
-    if strategy:
-        lines.append("\U0001f9e0 Strategy")
-        for c in strategy:
-            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
-        lines.append("")
-
-    # 👥 Human Resources
-    if human_resources:
-        lines.append("\U0001f465 Human Resources")
-        for c in human_resources:
-            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
-        lines.append("")
-
-    # 🤝 Administration
-    if administration:
-        lines.append("\U0001f91d Administration")
-        for c in administration:
-            lines.append(f"\u2022 {c.title}{_due_suffix(c)}")
+    # Everything Else
+    if everything_else:
+        lines.append("Everything Else")
+        for c in everything_else:
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
     return "\n".join(lines).strip()

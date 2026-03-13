@@ -2,15 +2,31 @@ openapi: 3.1.0
 info:
   title: Signal OS
   description: >
-    Personal commitment log.
-    RULE 1: When the user asks to see tasks, call GET /tasks.
-    RULE 2: Display the returned text EXACTLY and COMPLETELY as-is.
-    RULE 3: NEVER rename, reword, or rearrange section headings.
-    RULE 4: NEVER add details, sub-bullets, dividers, or commentary.
-    RULE 5: NEVER reorder sections or move items between sections.
-    RULE 6: NEVER fabricate tasks from memory or omit any tasks.
-    The response is pre-formatted. Print it verbatim with zero changes.
-  version: 0.1.0
+    You are my commitment tracker. When I tell you about something I
+    need to do, promised someone, or need to follow up on, use Signal
+    OS to log it. When I ask what's on my plate, query my open
+    commitments. When I say something is done, close it.
+    Rules: Always use Signal OS actions. When opening a commitment,
+    extract title, person, urgency (NOW/SOON/SCHEDULED/SOMEDAY),
+    channel_type (email/slack/meeting/call/text/web/other).
+    When closing, try by title first; if ambiguous (409), show
+    candidates and ask user to choose. Keep responses concise.
+    When creating a commitment, check existing initiatives via
+    GET /initiatives/list. If a match exists, confirm with the user
+    then link via POST /initiatives/link. If no match, ask the user
+    whether to create a new initiative or rethink the task.
+    LIST RENDERING: Call GET /tasks and display verbatim.
+    Three sections only: Priority Execution, Initiatives,
+    Everything Else. Do not invent additional sections.
+    Print the response exactly as returned with zero changes.
+    NEVER rename, reword, reorder, add details, sub-bullets,
+    dividers, or commentary. NEVER fabricate tasks from memory.
+    Language: "wanna" = "want to".
+    "So now what's open?" = list open commitments.
+    "Now it's open." = reopen most recently referenced commitment.
+    If ambiguous, ask a clarifying question.
+    Default assumption: the user is asking what's open.
+  version: 0.2.0
 
 servers:
   - url: https://signal-os-api-production.up.railway.app
@@ -339,6 +355,85 @@ components:
           type: string
           format: date-time
 
+    InitiativeCreateRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          default: ACTIVE
+
+    InitiativeUpdateRequest:
+      type: object
+      required: [initiative_id]
+      properties:
+        initiative_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          nullable: true
+
+    Initiative:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InitiativeLinkRequest:
+      type: object
+      required: [initiative_id, commitment_id]
+      properties:
+        initiative_id:
+          type: string
+        commitment_id:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+
+    InitiativeLink:
+      type: object
+      properties:
+        id:
+          type: string
+        initiative_id:
+          type: string
+        commitment_id:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
 
 paths:
   /tasks:
@@ -346,8 +441,9 @@ paths:
       operationId: getFormattedTaskList
       summary: Show all tasks as pre-formatted text
       description: >
-        Print the response verbatim. Do NOT rename headings, add
-        details, reorder sections, or insert dividers.
+        Call this when the user says /tasks, show me my tasks,
+        or any variation. Print verbatim. Three sections only:
+        Priority Execution, Initiatives, Everything Else.
       responses:
         "200":
           description: Pre-formatted markdown task list
@@ -732,3 +828,163 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ObjectiveUpdateNote"
+
+  /initiatives/create:
+    post:
+      operationId: createInitiative
+      summary: Create a new initiative
+      description: >
+        Create a strategic initiative to group commitments.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiativeCreateRequest"
+      responses:
+        "200":
+          description: Created initiative
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Initiative"
+
+  /initiatives/update:
+    post:
+      operationId: updateInitiative
+      summary: Update an initiative
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiativeUpdateRequest"
+      responses:
+        "200":
+          description: Updated initiative
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Initiative"
+        "404":
+          description: Initiative not found
+
+  /initiatives/list:
+    get:
+      operationId: listInitiatives
+      summary: List all initiatives
+      description: >
+        Check existing initiatives before creating commitments.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+      responses:
+        "200":
+          description: List of initiatives
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Initiative"
+
+  /initiatives/get:
+    get:
+      operationId: getInitiative
+      summary: Get a single initiative by ID
+      parameters:
+        - name: initiative_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The initiative
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Initiative"
+        "404":
+          description: Initiative not found
+
+  /initiatives/link:
+    post:
+      operationId: linkCommitmentToInitiative
+      summary: Link a commitment to an initiative
+      description: >
+        Idempotent. Relinking updates the rationale.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiativeLinkRequest"
+      responses:
+        "200":
+          description: Created or updated link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitiativeLink"
+        "404":
+          description: Initiative or commitment not found
+
+  /initiatives/unlink:
+    post:
+      operationId: unlinkCommitmentFromInitiative
+      summary: Remove link between commitment and initiative
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiativeLinkRequest"
+      responses:
+        "200":
+          description: Link removed
+        "404":
+          description: Link not found
+
+  /initiatives/links:
+    get:
+      operationId: listLinksForInitiative
+      summary: List commitments linked to an initiative
+      parameters:
+        - name: initiative_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of commitment links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InitiativeLink"
+
+  /commitments/initiatives:
+    get:
+      operationId: listInitiativesForCommitment
+      summary: List initiatives linked to a commitment
+      parameters:
+        - name: commitment_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of initiative links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InitiativeLink"

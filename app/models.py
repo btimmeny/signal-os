@@ -49,6 +49,13 @@ class ChannelType(str, enum.Enum):
     OTHER = "other"
 
 
+class InitiativeStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
 class ObjectiveStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     COMPLETED = "COMPLETED"
@@ -125,9 +132,91 @@ class Commitment(Base):
         "ObjectiveCommitmentLink", back_populates="commitment", cascade="all, delete-orphan",
         lazy="select",
     )
+    initiative_links = relationship(
+        "InitiativeCommitmentLink", back_populates="commitment", cascade="all, delete-orphan",
+        lazy="select",
+    )
 
     def __repr__(self) -> str:
         return f"<Commitment {self.id} title={self.title!r} status={self.status}>"
+
+
+# ---------------------------------------------------------------------------
+# Initiative
+# ---------------------------------------------------------------------------
+
+class Initiative(Base):
+    __tablename__ = "initiatives"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    title = Column(String(512), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    status = Column(
+        Enum(InitiativeStatus, name="initiative_status", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=InitiativeStatus.ACTIVE,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    commitment_links = relationship(
+        "InitiativeCommitmentLink", back_populates="initiative", cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Initiative {self.id} title={self.title!r} status={self.status}>"
+
+
+# ---------------------------------------------------------------------------
+# Initiative-Commitment Link (join table)
+# ---------------------------------------------------------------------------
+
+class InitiativeCommitmentLink(Base):
+    __tablename__ = "initiative_commitment_links"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    initiative_id = Column(
+        Uuid,
+        ForeignKey("initiatives.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    commitment_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rationale = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    initiative = relationship("Initiative", back_populates="commitment_links")
+    commitment = relationship("Commitment", back_populates="initiative_links")
+
+    def __repr__(self) -> str:
+        return f"<InitiativeCommitmentLink init={self.initiative_id} commit={self.commitment_id}>"
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,11 @@ from app.schemas import (
     CommitmentResponse,
     CommitmentSetPriorityRequest,
     CommitmentUpdateRequest,
+    InitiativeCreateRequest,
+    InitiativeLinkRequest,
+    InitiativeLinkResponse,
+    InitiativeResponse,
+    InitiativeUpdateRequest,
     ObjectiveCreateRequest,
     ObjectiveLinkRequest,
     ObjectiveLinkResponse,
@@ -36,6 +41,8 @@ from app.schemas import (
 )
 from app.services import comments as comment_svc
 from app.services import commitments as commitment_svc
+from app.services import initiative_links as init_link_svc
+from app.services import initiatives as initiative_svc
 from app.services import objective_links as link_svc
 from app.services import objective_updates as obj_update_svc
 from app.services import objectives as objective_svc
@@ -297,6 +304,103 @@ def tasks_formatted(db: Session = Depends(get_db)):
     groups). Just show it verbatim.
     """
     return commitment_svc.format_dashboard_text(db)
+
+
+# ---------------------------------------------------------------------------
+# Initiatives
+# ---------------------------------------------------------------------------
+
+@app.post("/initiatives/create", response_model=InitiativeResponse)
+def initiatives_create(body: InitiativeCreateRequest, db: Session = Depends(get_db)):
+    init = initiative_svc.create_initiative(
+        db,
+        title=body.title,
+        description=body.description,
+        status=body.status.value,
+    )
+    return InitiativeResponse.from_orm_row(init)
+
+
+@app.post("/initiatives/update", response_model=InitiativeResponse)
+def initiatives_update(body: InitiativeUpdateRequest, db: Session = Depends(get_db)):
+    fields = body.model_dump(exclude={"initiative_id"}, exclude_none=True)
+    if "status" in fields and hasattr(fields["status"], "value"):
+        fields["status"] = fields["status"].value
+    init = initiative_svc.update_initiative(db, initiative_id=body.initiative_id, **fields)
+    if not init:
+        raise HTTPException(status_code=404, detail="Initiative not found")
+    return InitiativeResponse.from_orm_row(init)
+
+
+@app.get("/initiatives/list", response_model=list[InitiativeResponse])
+def initiatives_list(
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None),
+):
+    rows = initiative_svc.list_initiatives(db, status=status)
+    return [InitiativeResponse.from_orm_row(i) for i in rows]
+
+
+@app.get("/initiatives/get", response_model=InitiativeResponse)
+def initiatives_get(
+    initiative_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    init = initiative_svc.get_initiative(db, initiative_id=initiative_id)
+    if not init:
+        raise HTTPException(status_code=404, detail="Initiative not found")
+    return InitiativeResponse.from_orm_row(init)
+
+
+# ---------------------------------------------------------------------------
+# Initiative-Commitment Links
+# ---------------------------------------------------------------------------
+
+@app.post("/initiatives/link", response_model=InitiativeLinkResponse)
+def initiatives_link(body: InitiativeLinkRequest, db: Session = Depends(get_db)):
+    link = init_link_svc.link_commitment(
+        db,
+        initiative_id=body.initiative_id,
+        commitment_id=body.commitment_id,
+        rationale=body.rationale,
+    )
+    if not link:
+        raise HTTPException(status_code=404, detail="Initiative or commitment not found")
+    return InitiativeLinkResponse.from_orm_row(link)
+
+
+@app.post("/initiatives/unlink")
+def initiatives_unlink(body: InitiativeLinkRequest, db: Session = Depends(get_db)):
+    removed = init_link_svc.unlink_commitment(
+        db,
+        initiative_id=body.initiative_id,
+        commitment_id=body.commitment_id,
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="Link not found")
+    return {"detail": "Link removed"}
+
+
+@app.get("/initiatives/links", response_model=list[InitiativeLinkResponse])
+def initiatives_links(
+    initiative_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    links = init_link_svc.list_links_for_initiative(db, initiative_id=initiative_id)
+    if links is None:
+        raise HTTPException(status_code=404, detail="Initiative not found")
+    return [InitiativeLinkResponse.from_orm_row(l) for l in links]
+
+
+@app.get("/commitments/initiatives", response_model=list[InitiativeLinkResponse])
+def commitments_initiatives(
+    commitment_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    links = init_link_svc.list_links_for_commitment(db, commitment_id=commitment_id)
+    if links is None:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+    return [InitiativeLinkResponse.from_orm_row(l) for l in links]
 
 
 # ---------------------------------------------------------------------------

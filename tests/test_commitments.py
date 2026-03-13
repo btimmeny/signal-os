@@ -804,112 +804,261 @@ def test_tasks_empty(client):
     assert "0 open tasks" in r.text
 
 
-def test_tasks_ranked_execution(client):
-    """GET /tasks shows Ranked Execution section with keycap numbers."""
-    client.post("/commitments/open", json={"title": "Alpha", "priority_order": 2}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "Beta", "priority_order": 1}, headers=HEADERS)
-
-    r = client.get("/tasks", headers=HEADERS)
-    assert r.status_code == 200
-    text = r.text
-    assert "Ranked Execution" in text
-    # Beta should come before Alpha (priority 1 vs 2)
-    assert text.index("Beta") < text.index("Alpha")
-    assert "Beta" in text
-    assert "Alpha" in text
-
-
-def test_tasks_immediate_section(client):
-    """GET /tasks puts INCIDENT/NOW items in Immediate section."""
-    client.post("/commitments/open", json={"title": "On fire", "urgency": "INCIDENT"}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "Do now", "urgency": "NOW"}, headers=HEADERS)
-
-    r = client.get("/tasks", headers=HEADERS)
-    assert r.status_code == 200
-    text = r.text
-    assert "Immediate" in text
-    assert "On fire" in text
-    assert "Do now" in text
-
-
-def test_tasks_time_bound_section(client):
-    """GET /tasks puts items with due dates in Time-Bound / Compliance."""
+def test_tasks_priority_execution(client):
+    """GET /tasks shows Priority Execution section for items with 'Priority N.' in description."""
     client.post(
         "/commitments/open",
-        json={"title": "Submit report", "due_at": "2026-03-11T00:00:00Z"},
+        json={"title": "Alpha task", "description": "Priority 2. Second priority", "person": "Matteo"},
         headers=HEADERS,
     )
-
-    r = client.get("/tasks", headers=HEADERS)
-    assert r.status_code == 200
-    text = r.text
-    assert "Time-Bound / Compliance" in text
-    assert "Submit report" in text
-    assert "Due Mar 11" in text
-
-
-def test_tasks_strategy_section(client):
-    """GET /tasks puts objective-linked items in Strategy section."""
-    obj_r = client.post(
-        "/objectives/create",
-        json={"title": "Revenue Growth", "year": 2026},
-        headers=HEADERS,
-    )
-    obj_id = obj_r.json()["id"]
-
-    c_r = client.post("/commitments/open", json={"title": "Close big deal"}, headers=HEADERS)
-    c_id = c_r.json()["id"]
-    client.post(
-        "/objectives/link",
-        json={"objective_id": obj_id, "commitment_id": c_id},
-        headers=HEADERS,
-    )
-
-    r = client.get("/tasks", headers=HEADERS)
-    assert r.status_code == 200
-    text = r.text
-    assert "Strategy" in text
-    assert "Close big deal" in text
-
-
-def test_tasks_human_resources_section(client):
-    """GET /tasks puts items with a person in Human Resources section."""
     client.post(
         "/commitments/open",
-        json={"title": "Meet Jonathan Perry", "person": "Jonathan Perry"},
+        json={"title": "Beta task", "description": "Priority 1. Top priority"},
         headers=HEADERS,
     )
 
     r = client.get("/tasks", headers=HEADERS)
     assert r.status_code == 200
     text = r.text
-    assert "Human Resources" in text
-    assert "Meet Jonathan Perry" in text
+    assert "Priority Execution" in text
+    # Beta (Priority 1) should come before Alpha (Priority 2)
+    assert text.index("Beta task") < text.index("Alpha task")
+    assert "1. Beta task" in text
+    assert "2. Alpha task" in text
+    # Check person/due formatting
+    assert "(Matteo," in text
 
 
-def test_tasks_administration_section(client):
-    """GET /tasks puts remaining items in Administration section."""
-    client.post("/commitments/open", json={"title": "Read article"}, headers=HEADERS)
+def test_tasks_initiatives_section(client):
+    """GET /tasks shows Initiatives section for items titled 'Initiative: ...'."""
+    client.post(
+        "/commitments/open",
+        json={"title": "Initiative: cloud migration", "person": "Harneet Kaur"},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/open",
+        json={"title": "Initiative: 1-click onboarding"},
+        headers=HEADERS,
+    )
 
     r = client.get("/tasks", headers=HEADERS)
     assert r.status_code == 200
     text = r.text
-    assert "Administration" in text
-    assert "Read article" in text
+    assert "Initiatives" in text
+    assert "Initiative: cloud migration" in text
+    assert "Initiative: 1-click onboarding" in text
+    assert "(Harneet Kaur," in text
 
 
-def test_tasks_category_order(client):
-    """GET /tasks shows categories in correct order: Ranked > Immediate > Time-Bound > Strategy > HR > Admin."""
-    # Create one item per category
-    client.post("/commitments/open", json={"title": "Ranked item", "priority_order": 1}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "Urgent item", "urgency": "NOW"}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "Due item", "due_at": "2026-03-15T00:00:00Z"}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "People item", "person": "Alice"}, headers=HEADERS)
-    client.post("/commitments/open", json={"title": "Admin item"}, headers=HEADERS)
+def test_tasks_everything_else_section(client):
+    """GET /tasks puts remaining items in Everything Else section."""
+    client.post(
+        "/commitments/open",
+        json={"title": "Plan India trip", "person": "Brian Stokes"},
+        headers=HEADERS,
+    )
+
+    r = client.get("/tasks", headers=HEADERS)
+    assert r.status_code == 200
+    text = r.text
+    assert "Everything Else" in text
+    assert "Plan India trip" in text
+    assert "(Brian Stokes," in text
+
+
+def test_tasks_three_section_order(client):
+    """GET /tasks shows sections in correct order: Priority Execution > Initiatives > Everything Else."""
+    client.post(
+        "/commitments/open",
+        json={"title": "Regular task"},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/open",
+        json={"title": "Initiative: big project"},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/open",
+        json={"title": "Top item", "description": "Priority 1. Do first"},
+        headers=HEADERS,
+    )
 
     r = client.get("/tasks", headers=HEADERS)
     text = r.text
-    assert text.index("Ranked Execution") < text.index("Immediate")
-    assert text.index("Immediate") < text.index("Time-Bound")
-    assert text.index("Time-Bound") < text.index("Human Resources")
-    assert text.index("Human Resources") < text.index("Administration")
+    assert text.index("Priority Execution") < text.index("Initiatives")
+    assert text.index("Initiatives") < text.index("Everything Else")
+
+
+def test_tasks_sort_within_section(client):
+    """Tasks within Everything Else are sorted by urgency then alphabetical."""
+    client.post(
+        "/commitments/open",
+        json={"title": "Zebra task", "urgency": "NOW"},
+        headers=HEADERS,
+    )
+    client.post(
+        "/commitments/open",
+        json={"title": "Alpha task", "urgency": "SOMEDAY"},
+        headers=HEADERS,
+    )
+
+    r = client.get("/tasks", headers=HEADERS)
+    text = r.text
+    assert "Everything Else" in text
+    # NOW should sort before SOMEDAY
+    assert text.index("Zebra task") < text.index("Alpha task")
+
+
+def test_tasks_person_due_format(client):
+    """Tasks show (person, due date) or em-dashes when missing."""
+    client.post(
+        "/commitments/open",
+        json={"title": "No details task"},
+        headers=HEADERS,
+    )
+
+    r = client.get("/tasks", headers=HEADERS)
+    text = r.text
+    # Missing person and date should show em-dashes
+    assert "(\u2014, \u2014)" in text
+
+
+# ---------------------------------------------------------------------------
+# Initiative CRUD tests
+# ---------------------------------------------------------------------------
+
+
+def test_create_initiative(client):
+    """POST /initiatives/create creates an initiative."""
+    r = client.post(
+        "/initiatives/create",
+        json={"title": "Cloud Migration", "description": "Move to AWS"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["title"] == "Cloud Migration"
+    assert data["description"] == "Move to AWS"
+    assert data["status"] == "ACTIVE"
+
+
+def test_list_initiatives(client):
+    """GET /initiatives/list returns all initiatives."""
+    client.post("/initiatives/create", json={"title": "Init A"}, headers=HEADERS)
+    client.post("/initiatives/create", json={"title": "Init B"}, headers=HEADERS)
+
+    r = client.get("/initiatives/list", headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 2
+
+
+def test_update_initiative(client):
+    """POST /initiatives/update modifies an initiative."""
+    cr = client.post("/initiatives/create", json={"title": "Old Title"}, headers=HEADERS)
+    init_id = cr.json()["id"]
+
+    r = client.post(
+        "/initiatives/update",
+        json={"initiative_id": init_id, "title": "New Title", "status": "COMPLETED"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["title"] == "New Title"
+    assert r.json()["status"] == "COMPLETED"
+
+
+def test_get_initiative(client):
+    """GET /initiatives/get returns a single initiative."""
+    cr = client.post("/initiatives/create", json={"title": "Solo"}, headers=HEADERS)
+    init_id = cr.json()["id"]
+
+    r = client.get(f"/initiatives/get?initiative_id={init_id}", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.json()["title"] == "Solo"
+
+
+def test_get_initiative_not_found(client):
+    """GET /initiatives/get returns 404 for missing initiative."""
+    r = client.get("/initiatives/get?initiative_id=00000000-0000-0000-0000-000000000000", headers=HEADERS)
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Initiative-Commitment Link tests
+# ---------------------------------------------------------------------------
+
+
+def test_link_commitment_to_initiative(client):
+    """POST /initiatives/link links a commitment to an initiative."""
+    ir = client.post("/initiatives/create", json={"title": "Migration"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    cr = client.post("/commitments/open", json={"title": "Set up VPC"}, headers=HEADERS)
+    c_id = cr.json()["id"]
+
+    r = client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_id": c_id, "rationale": "Infra work"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["initiative_id"] == init_id
+    assert r.json()["commitment_id"] == c_id
+    assert r.json()["rationale"] == "Infra work"
+
+
+def test_unlink_commitment_from_initiative(client):
+    """POST /initiatives/unlink removes a link."""
+    ir = client.post("/initiatives/create", json={"title": "Migration"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    cr = client.post("/commitments/open", json={"title": "Set up VPC"}, headers=HEADERS)
+    c_id = cr.json()["id"]
+
+    client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_id": c_id},
+        headers=HEADERS,
+    )
+    r = client.post(
+        "/initiatives/unlink",
+        json={"initiative_id": init_id, "commitment_id": c_id},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["detail"] == "Link removed"
+
+
+def test_list_initiative_links(client):
+    """GET /initiatives/links returns links for an initiative."""
+    ir = client.post("/initiatives/create", json={"title": "Migration"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    cr = client.post("/commitments/open", json={"title": "Task A"}, headers=HEADERS)
+    c_id = cr.json()["id"]
+
+    client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_id": c_id},
+        headers=HEADERS,
+    )
+    r = client.get(f"/initiatives/links?initiative_id={init_id}", headers=HEADERS)
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+
+
+def test_list_commitment_initiatives(client):
+    """GET /commitments/initiatives returns initiative links for a commitment."""
+    ir = client.post("/initiatives/create", json={"title": "Migration"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    cr = client.post("/commitments/open", json={"title": "Task A"}, headers=HEADERS)
+    c_id = cr.json()["id"]
+
+    client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_id": c_id},
+        headers=HEADERS,
+    )
+    r = client.get(f"/commitments/initiatives?commitment_id={c_id}", headers=HEADERS)
+    assert r.status_code == 200
+    assert len(r.json()) == 1
