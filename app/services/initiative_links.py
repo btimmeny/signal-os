@@ -32,9 +32,10 @@ def link_commitment(
         .first()
     )
     if existing:
-        existing.rationale = rationale
-        db.commit()
-        db.refresh(existing)
+        if rationale is not None:
+            existing.rationale = rationale
+            db.commit()
+            db.refresh(existing)
         return existing
 
     link = InitiativeCommitmentLink(
