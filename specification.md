@@ -320,6 +320,7 @@ Each feature is documented independently in the `features/` directory. Features 
 | 012 | Task Detail Rendering | [`features/012-task-detail-rendering-2026-03-03`](features/012-task-detail-rendering-2026-03-03/feature.md) | 2026-03-03 | Enhanced `/tasks` output to include person, org, urgency, status, due date, channel, and description details |
 | 013 | Task List Categories | [`features/013-task-list-categories-2026-03-03`](features/013-task-list-categories-2026-03-03/feature.md) | 2026-03-03 | Reformatted `/tasks` into six emoji-headed categories: Ranked Execution, Immediate, Time-Bound, Strategy, HR, Administration |
 | 014 | Initiatives | [`features/014-initiatives-2026-03-13`](features/014-initiatives-2026-03-13/feature.md) | 2026-03-13 | Added initiatives as first-class entities with CRUD, commitment linking, and reformatted `/tasks` into 3 sections: Priority Execution, Initiatives, Everything Else |
+| 015 | Initiative-Grouped Rendering | [`features/015-initiative-grouped-rendering-2026-03-13`](features/015-initiative-grouped-rendering-2026-03-13/feature.md) | 2026-03-13 | Replaced flat "Initiative:" title-prefix rendering with join-table-based grouping: initiatives as headers with linked tasks indented beneath. Added `/initiatives/seed` endpoint. |
 
 ## 11. Future Considerations
 

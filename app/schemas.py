@@ -214,6 +214,10 @@ class InitiativeResponse(BaseModel):
         )
 
 
+class InitiativeSeedRequest(BaseModel):
+    titles: list[str] = Field(..., min_length=1)
+
+
 class InitiativeLinkRequest(BaseModel):
     initiative_id: str
     commitment_id: str

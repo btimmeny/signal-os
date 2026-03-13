@@ -71,3 +71,31 @@ def get_initiative(
 ) -> Optional[Initiative]:
     """Get a single initiative by ID."""
     return db.query(Initiative).filter(Initiative.id == uuid.UUID(initiative_id)).first()
+
+
+def seed_initiatives(
+    db: Session,
+    *,
+    titles: list[str],
+) -> list[Initiative]:
+    """Seed initiatives from a list of titles.
+
+    Skips titles that already exist (case-insensitive match).
+    Returns all created initiatives.
+    """
+    existing = {i.title.lower() for i in db.query(Initiative).all()}
+    created: list[Initiative] = []
+    for title in titles:
+        if title.lower() not in existing:
+            init = Initiative(
+                id=uuid.uuid4(),
+                title=title,
+                status=InitiativeStatus.ACTIVE,
+            )
+            db.add(init)
+            created.append(init)
+    if created:
+        db.commit()
+        for init in created:
+            db.refresh(init)
+    return created
