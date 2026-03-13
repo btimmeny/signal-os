@@ -15,11 +15,14 @@ info:
     GET /initiatives/list. If a match exists, confirm with the user
     then link via POST /initiatives/link. If no match, ask the user
     whether to create a new initiative or rethink the task.
-    LIST RENDERING: Call GET /tasks. The response is already
-    wrapped in a markdown code block. Display it exactly as
-    returned — copy-paste the entire response with zero changes.
-    Do NOT unwrap, reformat, add prefixes, reorder, or edit
-    the text in any way. NEVER fabricate tasks from memory.
+    LIST RENDERING: For /tasks, what's open, show tasks,
+    or ANY task listing request, call GET /tasks ONLY.
+    NEVER call /commitments/open or any other endpoint to
+    build a task list. The /tasks response is pre-formatted
+    text inside a code block. Display it EXACTLY as returned.
+    Do NOT unwrap, reformat, add prefixes like 'Initiative:',
+    reorder, flatten sub-headers, or edit in any way.
+    NEVER fabricate tasks from memory.
     Language: "wanna" = "want to".
     "So now what's open?" = list open commitments.
     "Now it's open." = reopen most recently referenced commitment.
@@ -448,11 +451,14 @@ paths:
   /tasks:
     get:
       operationId: getFormattedTaskList
-      summary: Show all tasks as pre-formatted text
+      summary: Show all open tasks grouped and formatted
       description: >
-        Call this when the user says /tasks, show me my tasks,
-        or any variation. Print verbatim. Three sections only:
-        Priority Execution, Initiatives, Everything Else.
+        ALWAYS call this for /tasks, show tasks, what's open,
+        what's on my plate, or ANY task listing request.
+        The response is pre-formatted text inside a code block.
+        You MUST display it EXACTLY as returned — no changes,
+        no rewording, no added prefixes, no flattening.
+        NEVER build your own task list from other endpoints.
       responses:
         "200":
           description: Pre-formatted markdown task list
@@ -517,62 +523,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Commitment"
 
-  /commitments/query:
-    get:
-      operationId: queryCommitments
-      summary: Query commitments with filters
-      parameters:
-        - name: person
-          in: query
-          schema:
-            type: string
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [OPEN, WAITING, SNOOZED, CLOSED]
-        - name: urgency
-          in: query
-          schema:
-            type: string
-            enum: [INCIDENT, NOW, SOON, SCHEDULED, SOMEDAY, ADMIN]
-        - name: channel_type
-          in: query
-          schema:
-            type: string
-        - name: due_before
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: due_after
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: opened_before
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: opened_after
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: text
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Matching commitments
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Commitment"
 
   /commitments/set_priority:
     post:
