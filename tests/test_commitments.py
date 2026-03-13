@@ -830,29 +830,40 @@ def test_tasks_priority_execution(client):
 
 
 def test_tasks_initiatives_section(client):
-    """GET /tasks shows Initiatives section for items titled 'Initiative: ...'."""
-    client.post(
+    """GET /tasks shows Initiatives section with tasks grouped under initiative names."""
+    # Create an initiative
+    ir = client.post("/initiatives/create", json={"title": "Cloud Migration"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+
+    # Create commitments and link them
+    cr1 = client.post(
         "/commitments/open",
-        json={"title": "Initiative: cloud migration", "person": "Harneet Kaur"},
+        json={"title": "Set up VPC", "person": "Harneet Kaur"},
         headers=HEADERS,
     )
-    client.post(
+    c1_id = cr1.json()["id"]
+    cr2 = client.post(
         "/commitments/open",
-        json={"title": "Initiative: 1-click onboarding"},
+        json={"title": "Migrate databases"},
         headers=HEADERS,
     )
+    c2_id = cr2.json()["id"]
+
+    client.post("/initiatives/link", json={"initiative_id": init_id, "commitment_id": c1_id}, headers=HEADERS)
+    client.post("/initiatives/link", json={"initiative_id": init_id, "commitment_id": c2_id}, headers=HEADERS)
 
     r = client.get("/tasks", headers=HEADERS)
     assert r.status_code == 200
     text = r.text
     assert "Initiatives" in text
-    assert "Initiative: cloud migration" in text
-    assert "Initiative: 1-click onboarding" in text
+    assert "Cloud Migration" in text
+    assert "Set up VPC" in text
+    assert "Migrate databases" in text
     assert "(Harneet Kaur," in text
 
 
 def test_tasks_everything_else_section(client):
-    """GET /tasks puts remaining items in Everything Else section."""
+    """GET /tasks puts unlinked items in Everything Else section."""
     client.post(
         "/commitments/open",
         json={"title": "Plan India trip", "person": "Brian Stokes"},
@@ -869,21 +880,24 @@ def test_tasks_everything_else_section(client):
 
 def test_tasks_three_section_order(client):
     """GET /tasks shows sections in correct order: Priority Execution > Initiatives > Everything Else."""
+    # Unlinked task for Everything Else
     client.post(
         "/commitments/open",
         json={"title": "Regular task"},
         headers=HEADERS,
     )
-    client.post(
-        "/commitments/open",
-        json={"title": "Initiative: big project"},
-        headers=HEADERS,
-    )
+    # Priority item
     client.post(
         "/commitments/open",
         json={"title": "Top item", "description": "Priority 1. Do first"},
         headers=HEADERS,
     )
+    # Initiative with linked commitment
+    ir = client.post("/initiatives/create", json={"title": "Big Project"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    cr = client.post("/commitments/open", json={"title": "Sub-task for project"}, headers=HEADERS)
+    c_id = cr.json()["id"]
+    client.post("/initiatives/link", json={"initiative_id": init_id, "commitment_id": c_id}, headers=HEADERS)
 
     r = client.get("/tasks", headers=HEADERS)
     text = r.text
@@ -984,6 +998,34 @@ def test_get_initiative_not_found(client):
     """GET /initiatives/get returns 404 for missing initiative."""
     r = client.get("/initiatives/get?initiative_id=00000000-0000-0000-0000-000000000000", headers=HEADERS)
     assert r.status_code == 404
+
+
+def test_seed_initiatives(client):
+    """POST /initiatives/seed creates initiatives that don't exist yet."""
+    r = client.post(
+        "/initiatives/seed",
+        json={"titles": ["Alpha", "Beta", "Gamma"]},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 3
+    assert {d["title"] for d in data} == {"Alpha", "Beta", "Gamma"}
+
+    # Calling again with overlapping titles should only create new ones
+    r2 = client.post(
+        "/initiatives/seed",
+        json={"titles": ["Beta", "Delta"]},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    data2 = r2.json()
+    assert len(data2) == 1
+    assert data2[0]["title"] == "Delta"
+
+    # Total should be 4
+    r3 = client.get("/initiatives/list", headers=HEADERS)
+    assert len(r3.json()) == 4
 
 
 # ---------------------------------------------------------------------------

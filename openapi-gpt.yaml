@@ -406,6 +406,16 @@ components:
           type: string
           format: date-time
 
+    InitiativeSeedRequest:
+      type: object
+      required: [titles]
+      properties:
+        titles:
+          type: array
+          items:
+            type: string
+          minItems: 1
+
     InitiativeLinkRequest:
       type: object
       required: [initiative_id, commitment_id]
@@ -884,6 +894,28 @@ paths:
       responses:
         "200":
           description: List of initiatives
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Initiative"
+
+  /initiatives/seed:
+    post:
+      operationId: seedInitiatives
+      summary: Seed initiatives from a list of titles
+      description: >-
+        Creates initiatives that do not yet exist. Skips duplicates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitiativeSeedRequest"
+      responses:
+        "200":
+          description: Newly created initiatives
           content:
             application/json:
               schema:

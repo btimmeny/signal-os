@@ -25,6 +25,7 @@ from app.schemas import (
     InitiativeLinkRequest,
     InitiativeLinkResponse,
     InitiativeResponse,
+    InitiativeSeedRequest,
     InitiativeUpdateRequest,
     ObjectiveCreateRequest,
     ObjectiveLinkRequest,
@@ -339,6 +340,12 @@ def initiatives_list(
 ):
     rows = initiative_svc.list_initiatives(db, status=status)
     return [InitiativeResponse.from_orm_row(i) for i in rows]
+
+
+@app.post("/initiatives/seed", response_model=list[InitiativeResponse])
+def initiatives_seed(body: InitiativeSeedRequest, db: Session = Depends(get_db)):
+    created = initiative_svc.seed_initiatives(db, titles=body.titles)
+    return [InitiativeResponse.from_orm_row(i) for i in created]
 
 
 @app.get("/initiatives/get", response_model=InitiativeResponse)

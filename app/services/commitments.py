@@ -16,7 +16,9 @@ from app.models import (
     Commitment,
     CommitmentStatus,
     ChannelType,
+    Initiative,
     InitiativeCommitmentLink,
+    InitiativeStatus,
     ObjectiveCommitmentLink,
     StrategicObjective,
     Urgency,
@@ -505,8 +507,8 @@ def format_dashboard_text(db: Session) -> str:
     The text is ready to display verbatim — no reformatting needed.
     Three sections (in order):
       1. Priority Execution — items whose description contains "Priority N."
-      2. Initiatives — items whose title begins with "Initiative:"
-      3. Everything Else — all remaining open tasks
+      2. Initiatives — ACTIVE initiatives with their linked commitments grouped beneath
+      3. Everything Else — all remaining open tasks not in the above sections
     Each task appears on a single line with (person, due date).
     """
     all_open = (
@@ -518,23 +520,51 @@ def format_dashboard_text(db: Session) -> str:
     if not all_open:
         return "0 open tasks"
 
+    # Build set of commitment IDs linked to any ACTIVE initiative
+    active_initiatives = (
+        db.query(Initiative)
+        .filter(Initiative.status == InitiativeStatus.ACTIVE)
+        .order_by(Initiative.created_at.asc())
+        .all()
+    )
+
+    # Map: initiative_id -> list of linked open commitment objects
+    initiative_commitments: dict[str, list[Commitment]] = {}
+    linked_commitment_ids: set = set()
+
+    open_by_id = {str(c.id): c for c in all_open}
+
+    for init in active_initiatives:
+        links = (
+            db.query(InitiativeCommitmentLink)
+            .filter(InitiativeCommitmentLink.initiative_id == init.id)
+            .order_by(InitiativeCommitmentLink.created_at.asc())
+            .all()
+        )
+        grouped: list[Commitment] = []
+        for link in links:
+            cid = str(link.commitment_id)
+            if cid in open_by_id:
+                grouped.append(open_by_id[cid])
+                linked_commitment_ids.add(cid)
+        if grouped:
+            grouped.sort(key=lambda c: _sort_key(c))
+            initiative_commitments[str(init.id)] = grouped
+
     # Categorise into three sections
     priority_exec: list[tuple[int, Commitment]] = []  # (priority_number, commitment)
-    initiatives: list[Commitment] = []
     everything_else: list[Commitment] = []
 
     for c in all_open:
+        cid = str(c.id)
         pnum = _extract_priority_number(c)
         if pnum > 0:
             priority_exec.append((pnum, c))
-        elif c.title and c.title.startswith("Initiative:"):
-            initiatives.append(c)
-        else:
+        elif cid not in linked_commitment_ids:
             everything_else.append(c)
 
     # Sort each section
     priority_exec.sort(key=lambda pair: _sort_key(pair[1], pair[0]))
-    initiatives.sort(key=lambda c: _sort_key(c))
     everything_else.sort(key=lambda c: _sort_key(c))
 
     lines: list[str] = []
@@ -546,11 +576,18 @@ def format_dashboard_text(db: Session) -> str:
             lines.append(f"{i}. {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
-    # Initiatives
-    if initiatives:
+    # Initiatives — each initiative as a sub-header with linked tasks beneath
+    has_initiative_content = any(
+        str(init.id) in initiative_commitments for init in active_initiatives
+    )
+    if has_initiative_content:
         lines.append("Initiatives")
-        for c in initiatives:
-            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
+        for init in active_initiatives:
+            init_id = str(init.id)
+            if init_id in initiative_commitments:
+                lines.append(init.title)
+                for c in initiative_commitments[init_id]:
+                    lines.append(f"  \u2022 {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
     # Everything Else
