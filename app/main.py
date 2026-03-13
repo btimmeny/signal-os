@@ -365,10 +365,32 @@ def initiatives_get(
 
 @app.post("/initiatives/link", response_model=InitiativeLinkResponse)
 def initiatives_link(body: InitiativeLinkRequest, db: Session = Depends(get_db)):
+    commitment_id = body.commitment_id
+
+    # Resolve commitment by title if no ID provided
+    if not commitment_id and body.commitment_title:
+        from app.models import Commitment as CommitmentModel, CommitmentStatus as CSEnum
+        matches = (
+            db.query(CommitmentModel)
+            .filter(
+                CommitmentModel.title.ilike(f"%{body.commitment_title}%"),
+                CommitmentModel.status != CSEnum.CLOSED,
+            )
+            .all()
+        )
+        if len(matches) == 0:
+            raise HTTPException(status_code=404, detail="No open commitment matching that title")
+        if len(matches) > 1:
+            candidates = [{"id": str(m.id), "title": m.title} for m in matches]
+            raise HTTPException(status_code=409, detail={"message": "Multiple matches — provide commitment_id", "candidates": candidates})
+        commitment_id = str(matches[0].id)
+    elif not commitment_id:
+        raise HTTPException(status_code=422, detail="Provide commitment_id or commitment_title")
+
     link = init_link_svc.link_commitment(
         db,
         initiative_id=body.initiative_id,
-        commitment_id=body.commitment_id,
+        commitment_id=commitment_id,
         rationale=body.rationale,
     )
     if not link:

@@ -421,12 +421,16 @@ components:
 
     InitiativeLinkRequest:
       type: object
-      required: [initiative_id, commitment_id]
+      required: [initiative_id]
       properties:
         initiative_id:
           type: string
         commitment_id:
           type: string
+          nullable: true
+        commitment_title:
+          type: string
+          nullable: true
         rationale:
           type: string
           nullable: true
@@ -896,7 +900,8 @@ paths:
       operationId: linkCommitmentToInitiative
       summary: Link a commitment to an initiative
       description: >
-        Idempotent. Relinking updates the rationale.
+        Provide commitment_id OR commitment_title (partial
+        match). 409 if multiple matches. Idempotent.
       requestBody:
         required: true
         content:

@@ -1051,6 +1051,65 @@ def test_link_commitment_to_initiative(client):
     assert r.json()["rationale"] == "Infra work"
 
 
+def test_link_commitment_by_title(client):
+    """POST /initiatives/link resolves commitment by title."""
+    ir = client.post("/initiatives/create", json={"title": "Talent"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    cr = client.post("/commitments/open", json={"title": "Write welcome note to Deepak"}, headers=HEADERS)
+    c_id = cr.json()["id"]
+
+    r = client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_title": "welcome note to Deepak"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    assert r.json()["commitment_id"] == c_id
+    assert r.json()["initiative_id"] == init_id
+
+
+def test_link_commitment_by_title_no_match(client):
+    """POST /initiatives/link returns 404 when title doesn't match."""
+    ir = client.post("/initiatives/create", json={"title": "Talent"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+
+    r = client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_title": "nonexistent task xyz"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 404
+
+
+def test_link_commitment_by_title_ambiguous(client):
+    """POST /initiatives/link returns 409 when title matches multiple."""
+    ir = client.post("/initiatives/create", json={"title": "Talent"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+    client.post("/commitments/open", json={"title": "Review code for Alpha"}, headers=HEADERS)
+    client.post("/commitments/open", json={"title": "Review code for Beta"}, headers=HEADERS)
+
+    r = client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id, "commitment_title": "Review code"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 409
+    assert "candidates" in r.json()["detail"]
+
+
+def test_link_commitment_no_id_or_title(client):
+    """POST /initiatives/link returns 422 when neither ID nor title provided."""
+    ir = client.post("/initiatives/create", json={"title": "Talent"}, headers=HEADERS)
+    init_id = ir.json()["id"]
+
+    r = client.post(
+        "/initiatives/link",
+        json={"initiative_id": init_id},
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+
+
 def test_unlink_commitment_from_initiative(client):
     """POST /initiatives/unlink removes a link."""
     ir = client.post("/initiatives/create", json={"title": "Migration"}, headers=HEADERS)
