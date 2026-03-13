@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models import Commitment as CommitmentModel, CommitmentStatus as CSEnum
 from app.schemas import (
     CommentCreateRequest,
     CommentResponse,
@@ -369,7 +370,6 @@ def initiatives_link(body: InitiativeLinkRequest, db: Session = Depends(get_db))
 
     # Resolve commitment by title if no ID provided
     if not commitment_id and body.commitment_title:
-        from app.models import Commitment as CommitmentModel, CommitmentStatus as CSEnum
         matches = (
             db.query(CommitmentModel)
             .filter(
@@ -400,6 +400,8 @@ def initiatives_link(body: InitiativeLinkRequest, db: Session = Depends(get_db))
 
 @app.post("/initiatives/unlink")
 def initiatives_unlink(body: InitiativeLinkRequest, db: Session = Depends(get_db)):
+    if not body.commitment_id:
+        raise HTTPException(status_code=422, detail="commitment_id is required for unlink")
     removed = init_link_svc.unlink_commitment(
         db,
         initiative_id=body.initiative_id,
