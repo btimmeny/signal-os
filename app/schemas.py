@@ -220,7 +220,8 @@ class InitiativeSeedRequest(BaseModel):
 
 class InitiativeLinkRequest(BaseModel):
     initiative_id: str
-    commitment_id: str
+    commitment_id: Optional[str] = None
+    commitment_title: Optional[str] = None
     rationale: Optional[str] = None
 
 
