@@ -302,25 +302,29 @@ The current WhatsApp integration is a mock that logs messages to the console. Th
 
 ## 10. Feature Index
 
-Each feature is documented independently in the `features/` directory. Features are numbered chronologically.
+Each feature is documented independently in the `features/` directory. Features are numbered chronologically. Each feature folder contains:
+
+- **specification-feature-[name].md** — Feature specification (what was built and why)
+- **plan.md** — Step-by-step implementation plan (executable by an AI agent)
+- **task.md** — Discrete work items for AI swarm task distribution
 
 | # | Feature | Folder | Date | Description |
 |---|---------|--------|------|-------------|
-| 001 | Incident Urgency | [`features/001-incident-urgency-2026-03-02`](features/001-incident-urgency-2026-03-02/feature.md) | 2026-03-02 | Added `INCIDENT` as the highest-priority urgency level (above `NOW`) for production-breaking issues |
-| 002 | Admin Urgency | [`features/002-admin-urgency-2026-03-02`](features/002-admin-urgency-2026-03-02/feature.md) | 2026-03-02 | Added `ADMIN` as the lowest-priority urgency level (below `SOMEDAY`) for "get it done when you can" tasks |
-| 003 | Priority Order | [`features/003-priority-order-2026-03-02`](features/003-priority-order-2026-03-02/feature.md) | 2026-03-02 | Added explicit `priority_order` ranking independent of urgency categories with automatic reordering |
-| 004 | Commitment Comments | [`features/004-commitment-comments-2026-03-02`](features/004-commitment-comments-2026-03-02/feature.md) | 2026-03-02 | Added timestamped comments on commitments for tracking history, meeting notes, and status updates |
-| 005 | Strategic Objectives | [`features/005-strategic-objectives-2026-03-02`](features/005-strategic-objectives-2026-03-02/feature.md) | 2026-03-02 | Added annual strategic objectives CRUD (create, update, list, get) |
-| 006 | Objective-Commitment Linking | [`features/006-objective-commitment-linking-2026-03-02`](features/006-objective-commitment-linking-2026-03-02/feature.md) | 2026-03-02 | Added many-to-many linking between commitments and objectives with rationale |
-| 007 | Objective Updates | [`features/007-objective-updates-2026-03-02`](features/007-objective-updates-2026-03-02/feature.md) | 2026-03-02 | Added general commentary/updates on objectives (not tied to specific tasks) |
-| 008 | Status Reporting | [`features/008-status-reporting-2026-03-02`](features/008-status-reporting-2026-03-02/feature.md) | 2026-03-02 | Added status report creation, listing, and aggregated data gathering for weekly/monthly/quarterly/annual periods |
-| 009 | Task Dashboard | [`features/009-task-dashboard-2026-03-03`](features/009-task-dashboard-2026-03-03/feature.md) | 2026-03-03 | Added organized task view endpoint with GPT anti-hallucination training for canonical task listing |
-| 010 | Dashboard GPT Training Fix | [`features/010-dashboard-gpt-training-fix-2026-03-03`](features/010-dashboard-gpt-training-fix-2026-03-03/feature.md) | 2026-03-03 | Strengthened OpenAPI spec instructions to enforce grouped format and prohibit flat numbered lists |
-| 011 | Tasks Plain Text Endpoint | [`features/011-tasks-plain-text-endpoint-2026-03-03`](features/011-tasks-plain-text-endpoint-2026-03-03/feature.md) | 2026-03-03 | Added `GET /tasks` returning pre-formatted markdown text so GPT displays tasks verbatim without reformatting |
-| 012 | Task Detail Rendering | [`features/012-task-detail-rendering-2026-03-03`](features/012-task-detail-rendering-2026-03-03/feature.md) | 2026-03-03 | Enhanced `/tasks` output to include person, org, urgency, status, due date, channel, and description details |
-| 013 | Task List Categories | [`features/013-task-list-categories-2026-03-03`](features/013-task-list-categories-2026-03-03/feature.md) | 2026-03-03 | Reformatted `/tasks` into six emoji-headed categories: Ranked Execution, Immediate, Time-Bound, Strategy, HR, Administration |
-| 014 | Initiatives | [`features/014-initiatives-2026-03-13`](features/014-initiatives-2026-03-13/feature.md) | 2026-03-13 | Added initiatives as first-class entities with CRUD, commitment linking, and reformatted `/tasks` into 3 sections: Priority Execution, Initiatives, Everything Else |
-| 015 | Initiative-Grouped Rendering | [`features/015-initiative-grouped-rendering-2026-03-13`](features/015-initiative-grouped-rendering-2026-03-13/feature.md) | 2026-03-13 | Replaced flat "Initiative:" title-prefix rendering with join-table-based grouping: initiatives as headers with linked tasks indented beneath. Added `/initiatives/seed` endpoint. |
+| 001 | Incident Urgency | [`features/001-incident-urgency-2026-03-02`](features/001-incident-urgency-2026-03-02/specification-feature-incident-urgency.md) | 2026-03-02 | Added `INCIDENT` as the highest-priority urgency level (above `NOW`) for production-breaking issues |
+| 002 | Admin Urgency | [`features/002-admin-urgency-2026-03-02`](features/002-admin-urgency-2026-03-02/specification-feature-admin-urgency.md) | 2026-03-02 | Added `ADMIN` as the lowest-priority urgency level (below `SOMEDAY`) for "get it done when you can" tasks |
+| 003 | Priority Order | [`features/003-priority-order-2026-03-02`](features/003-priority-order-2026-03-02/specification-feature-priority-order.md) | 2026-03-02 | Added explicit `priority_order` ranking independent of urgency categories with automatic reordering |
+| 004 | Commitment Comments | [`features/004-commitment-comments-2026-03-02`](features/004-commitment-comments-2026-03-02/specification-feature-commitment-comments.md) | 2026-03-02 | Added timestamped comments on commitments for tracking history, meeting notes, and status updates |
+| 005 | Strategic Objectives | [`features/005-strategic-objectives-2026-03-02`](features/005-strategic-objectives-2026-03-02/specification-feature-strategic-objectives.md) | 2026-03-02 | Added annual strategic objectives CRUD (create, update, list, get) |
+| 006 | Objective-Commitment Linking | [`features/006-objective-commitment-linking-2026-03-02`](features/006-objective-commitment-linking-2026-03-02/specification-feature-objective-commitment-linking.md) | 2026-03-02 | Added many-to-many linking between commitments and objectives with rationale |
+| 007 | Objective Updates | [`features/007-objective-updates-2026-03-02`](features/007-objective-updates-2026-03-02/specification-feature-objective-updates.md) | 2026-03-02 | Added general commentary/updates on objectives (not tied to specific tasks) |
+| 008 | Status Reporting | [`features/008-status-reporting-2026-03-02`](features/008-status-reporting-2026-03-02/specification-feature-status-reporting.md) | 2026-03-02 | Added status report creation, listing, and aggregated data gathering for weekly/monthly/quarterly/annual periods |
+| 009 | Task Dashboard | [`features/009-task-dashboard-2026-03-03`](features/009-task-dashboard-2026-03-03/specification-feature-task-dashboard.md) | 2026-03-03 | Added organized task view endpoint with GPT anti-hallucination training for canonical task listing |
+| 010 | Dashboard GPT Training Fix | [`features/010-dashboard-gpt-training-fix-2026-03-03`](features/010-dashboard-gpt-training-fix-2026-03-03/specification-feature-dashboard-gpt-training-fix.md) | 2026-03-03 | Strengthened OpenAPI spec instructions to enforce grouped format and prohibit flat numbered lists |
+| 011 | Tasks Plain Text Endpoint | [`features/011-tasks-plain-text-endpoint-2026-03-03`](features/011-tasks-plain-text-endpoint-2026-03-03/specification-feature-tasks-plain-text-endpoint.md) | 2026-03-03 | Added `GET /tasks` returning pre-formatted markdown text so GPT displays tasks verbatim without reformatting |
+| 012 | Task Detail Rendering | [`features/012-task-detail-rendering-2026-03-03`](features/012-task-detail-rendering-2026-03-03/specification-feature-task-detail-rendering.md) | 2026-03-03 | Enhanced `/tasks` output to include person, org, urgency, status, due date, channel, and description details |
+| 013 | Task List Categories | [`features/013-task-list-categories-2026-03-03`](features/013-task-list-categories-2026-03-03/specification-feature-task-list-categories.md) | 2026-03-03 | Reformatted `/tasks` into six emoji-headed categories: Ranked Execution, Immediate, Time-Bound, Strategy, HR, Administration |
+| 014 | Initiatives | [`features/014-initiatives-2026-03-13`](features/014-initiatives-2026-03-13/specification-feature-initiatives.md) | 2026-03-13 | Added initiatives as first-class entities with CRUD, commitment linking, and reformatted `/tasks` into 3 sections: Priority Execution, Initiatives, Everything Else |
+| 015 | Initiative-Grouped Rendering | [`features/015-initiative-grouped-rendering-2026-03-13`](features/015-initiative-grouped-rendering-2026-03-13/specification-feature-initiative-grouped-rendering.md) | 2026-03-13 | Replaced flat "Initiative:" title-prefix rendering with join-table-based grouping: initiatives as headers with linked tasks indented beneath. Added `/initiatives/seed` endpoint. |
 
 ## 11. Future Considerations
 
