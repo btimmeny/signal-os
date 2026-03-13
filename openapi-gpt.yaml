@@ -15,12 +15,11 @@ info:
     GET /initiatives/list. If a match exists, confirm with the user
     then link via POST /initiatives/link. If no match, ask the user
     whether to create a new initiative or rethink the task.
-    LIST RENDERING: Call GET /tasks and display verbatim.
-    Three sections only: Priority Execution, Initiatives,
-    Everything Else. Do not invent additional sections.
-    Print the response exactly as returned with zero changes.
-    NEVER rename, reword, reorder, add details, sub-bullets,
-    dividers, or commentary. NEVER fabricate tasks from memory.
+    LIST RENDERING: Call GET /tasks. The response is already
+    wrapped in a markdown code block. Display it exactly as
+    returned — copy-paste the entire response with zero changes.
+    Do NOT unwrap, reformat, add prefixes, reorder, or edit
+    the text in any way. NEVER fabricate tasks from memory.
     Language: "wanna" = "want to".
     "So now what's open?" = list open commitments.
     "Now it's open." = reopen most recently referenced commitment.
