@@ -19,10 +19,11 @@ info:
     or ANY task listing request, call GET /tasks ONLY.
     NEVER call /commitments/open or any other endpoint to
     build a task list. The /tasks response is pre-formatted
-    text inside a code block. Display it EXACTLY as returned.
-    Do NOT unwrap, reformat, add prefixes like 'Initiative:',
+    plain text. Display it EXACTLY as returned.
+    Do NOT reformat, add prefixes like 'Initiative:',
     reorder, flatten sub-headers, or edit in any way.
-    NEVER fabricate tasks from memory.
+    Never, under any circumstance, return the results in
+    a copy box. NEVER fabricate tasks from memory.
     Language: "wanna" = "want to".
     "So now what's open?" = list open commitments.
     "Now it's open." = reopen most recently referenced commitment.

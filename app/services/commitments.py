@@ -597,8 +597,7 @@ def format_dashboard_text(db: Session) -> str:
             lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
-    body = "\n".join(lines).strip()
-    return f"```\n{body}\n```"
+    return "\n".join(lines).strip()
 
 
 def query_commitments(
