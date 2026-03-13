@@ -169,6 +169,78 @@ class CommentResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Initiative schemas
+# ---------------------------------------------------------------------------
+
+class InitiativeStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
+class InitiativeCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=512)
+    description: Optional[str] = None
+    status: InitiativeStatus = InitiativeStatus.ACTIVE
+
+
+class InitiativeUpdateRequest(BaseModel):
+    initiative_id: str
+    title: Optional[str] = Field(None, min_length=1, max_length=512)
+    description: Optional[str] = None
+    status: Optional[InitiativeStatus] = None
+
+
+class InitiativeResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    status: InitiativeStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "InitiativeResponse":
+        return cls(
+            id=str(obj.id),
+            title=obj.title,
+            description=obj.description,
+            status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            created_at=obj.created_at,
+            updated_at=obj.updated_at,
+        )
+
+
+class InitiativeLinkRequest(BaseModel):
+    initiative_id: str
+    commitment_id: str
+    rationale: Optional[str] = None
+
+
+class InitiativeLinkResponse(BaseModel):
+    id: str
+    initiative_id: str
+    commitment_id: str
+    rationale: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "InitiativeLinkResponse":
+        return cls(
+            id=str(obj.id),
+            initiative_id=str(obj.initiative_id),
+            commitment_id=str(obj.commitment_id),
+            rationale=obj.rationale,
+            created_at=obj.created_at,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Strategic Objective schemas
 # ---------------------------------------------------------------------------
 
