@@ -530,9 +530,41 @@ components:
         lead_updates:
           type: object
           nullable: true
+          additionalProperties:
+            type: object
+            properties:
+              role:
+                type: string
+              focus:
+                type: string
+              progress:
+                type: array
+                items:
+                  type: string
+              next_focus:
+                type: array
+                items:
+                  type: string
         dashboard_snapshot:
           type: object
           nullable: true
+          properties:
+            top_focus:
+              type: array
+              items:
+                type: string
+            needs_decision:
+              type: array
+              items:
+                type: string
+            due_soon:
+              type: array
+              items:
+                type: string
+            active_workstreams:
+              type: array
+              items:
+                type: string
         audience:
           type: array
           items:
