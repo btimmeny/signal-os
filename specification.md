@@ -327,6 +327,7 @@ Each feature is documented independently in the `features/` directory. Features 
 | 015 | Initiative-Grouped Rendering | [`features/015-initiative-grouped-rendering-2026-03-13`](features/015-initiative-grouped-rendering-2026-03-13/specification-feature-initiative-grouped-rendering.md) | 2026-03-13 | Replaced flat "Initiative:" title-prefix rendering with join-table-based grouping: initiatives as headers with linked tasks indented beneath. Added `/initiatives/seed` endpoint. |
 | 016 | Strategic Themes | [`features/016-strategic-themes-2026-03-15`](features/016-strategic-themes-2026-03-15/specification-feature-strategic-themes.md) | 2026-03-15 | Added Strategic Themes as top-level hierarchy (Theme → Initiative → Task). CRUD + seed endpoints, theme-level grouping in `/tasks`, initiative focus warning (>15 tasks). |
 | 017 | Weekly Platform Alignment Memo | [`features/017-weekly-memo-2026-03-15`](features/017-weekly-memo-2026-03-15/specification-feature-weekly-memo.md) | 2026-03-15 | Added Platform Leads and Leadership Memos. Generate weekly memos from dashboard state grouped by lead, with CRUD + render endpoints. |
+| 018 | Memo Export System | [`features/018-memo-export-2026-03-15`](features/018-memo-export-2026-03-15/specification-feature-memo-export.md) | 2026-03-15 | Export memos to Word (.docx) and Markdown (.md) formats. Bidirectional status transitions (DRAFT, FINALIZED, SENT). |
 
 ## 11. Future Considerations
 

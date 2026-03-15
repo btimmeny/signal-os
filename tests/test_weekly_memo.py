@@ -406,6 +406,262 @@ def test_memo_end_to_end_flow(client):
 
 
 # ---------------------------------------------------------------------------
+# Memo Status Transitions (back-and-forth)
+# ---------------------------------------------------------------------------
+
+def test_status_draft_to_finalized(client):
+    r = client.post("/memos/generate", json={}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "FINALIZED"},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "FINALIZED"
+
+
+def test_status_finalized_back_to_draft(client):
+    """User should be able to revert a finalized memo back to draft for edits."""
+    r = client.post("/memos/generate", json={}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    # Finalize
+    client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "FINALIZED"},
+        headers=HEADERS,
+    )
+
+    # Revert to draft
+    r2 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "DRAFT"},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "DRAFT"
+
+
+def test_status_finalized_to_sent(client):
+    r = client.post("/memos/generate", json={}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "FINALIZED"},
+        headers=HEADERS,
+    )
+
+    r2 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "SENT"},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "SENT"
+
+
+def test_status_sent_back_to_draft(client):
+    """User can revert a sent memo all the way back to draft."""
+    r = client.post("/memos/generate", json={}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "SENT"},
+        headers=HEADERS,
+    )
+
+    r2 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "DRAFT"},
+        headers=HEADERS,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "DRAFT"
+
+
+def test_status_full_lifecycle(client):
+    """DRAFT -> FINALIZED -> DRAFT (edit) -> FINALIZED -> SENT."""
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+    assert r.json()["status"] == "DRAFT"
+
+    # Finalize
+    r2 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "FINALIZED"},
+        headers=HEADERS,
+    )
+    assert r2.json()["status"] == "FINALIZED"
+
+    # Revert to draft for edits
+    r3 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "DRAFT", "strategic_objective": "Revised objective"},
+        headers=HEADERS,
+    )
+    assert r3.json()["status"] == "DRAFT"
+    assert r3.json()["strategic_objective"] == "Revised objective"
+
+    # Re-finalize
+    r4 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "FINALIZED"},
+        headers=HEADERS,
+    )
+    assert r4.json()["status"] == "FINALIZED"
+
+    # Send
+    r5 = client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "SENT"},
+        headers=HEADERS,
+    )
+    assert r5.json()["status"] == "SENT"
+
+
+# ---------------------------------------------------------------------------
+# Memo Export — Markdown
+# ---------------------------------------------------------------------------
+
+def test_export_md(client):
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/export-md?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+    text = r2.text
+    # Verify markdown heading structure
+    assert "# AI Platform Weekly Leadership Memo" in text
+    assert "**From:** Brian" in text
+    assert "## Strategic Objective" in text
+    assert "**Status:** DRAFT" in text
+
+
+def test_export_md_with_leads(client):
+    leads = [
+        {"name": "Matteo", "role": "Platform Engineering", "focus_area": "Infrastructure"},
+    ]
+    client.post("/leads/seed", json={"leads": leads}, headers=HEADERS)
+
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/export-md?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+    text = r2.text
+    assert "### Platform Engineering" in text
+    assert "Matteo" in text
+
+
+def test_export_md_not_found(client):
+    r = client.get(
+        "/memos/export-md?memo_id=00000000-0000-0000-0000-000000000000",
+        headers=HEADERS,
+    )
+    assert r.status_code == 404
+
+
+def test_export_md_content_disposition(client):
+    r = client.post("/memos/generate", json={}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/export-md?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+    assert "attachment" in r2.headers.get("content-disposition", "")
+    assert ".md" in r2.headers.get("content-disposition", "")
+
+
+# ---------------------------------------------------------------------------
+# Memo Export — Word (.docx)
+# ---------------------------------------------------------------------------
+
+def test_export_docx(client):
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/export-docx?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+    # Verify it's a valid docx (starts with PK zip header)
+    assert r2.content[:2] == b"PK"
+    assert "application/vnd.openxmlformats" in r2.headers.get("content-type", "")
+
+
+def test_export_docx_content_disposition(client):
+    r = client.post("/memos/generate", json={}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/export-docx?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+    assert "attachment" in r2.headers.get("content-disposition", "")
+    assert ".docx" in r2.headers.get("content-disposition", "")
+
+
+def test_export_docx_not_found(client):
+    r = client.get(
+        "/memos/export-docx?memo_id=00000000-0000-0000-0000-000000000000",
+        headers=HEADERS,
+    )
+    assert r.status_code == 404
+
+
+def test_export_docx_contains_content(client):
+    """Verify the exported docx contains the expected text content."""
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/export-docx?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+
+    # Parse the docx bytes to verify content
+    import io
+    from docx import Document
+
+    doc = Document(io.BytesIO(r2.content))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "AI Platform Weekly Leadership Memo" in full_text
+    assert "Brian" in full_text
+    assert "Strategic Objective" in full_text
+
+
+# ---------------------------------------------------------------------------
+# Export after status transitions
+# ---------------------------------------------------------------------------
+
+def test_export_finalized_memo(client):
+    """Export should work on finalized memos and reflect the status."""
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    client.post(
+        "/memos/update",
+        json={"memo_id": memo_id, "status": "FINALIZED"},
+        headers=HEADERS,
+    )
+
+    # Export as md
+    r2 = client.get(f"/memos/export-md?memo_id={memo_id}", headers=HEADERS)
+    assert r2.status_code == 200
+    assert "**Status:** FINALIZED" in r2.text
+
+    # Export as docx
+    r3 = client.get(f"/memos/export-docx?memo_id={memo_id}", headers=HEADERS)
+    assert r3.status_code == 200
+    assert r3.content[:2] == b"PK"
+
+    # Verify docx contains finalized status
+    import io
+    from docx import Document
+
+    doc = Document(io.BytesIO(r3.content))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "FINALIZED" in full_text
+
+
+# ---------------------------------------------------------------------------
 # Auth enforcement
 # ---------------------------------------------------------------------------
 
@@ -420,3 +676,11 @@ def test_leads_require_auth(client):
 def test_memos_require_auth(client):
     r = client.post("/memos/generate", json={})
     assert r.status_code == 401
+
+
+def test_export_requires_auth(client):
+    r = client.get("/memos/export-md?memo_id=00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 401
+
+    r2 = client.get("/memos/export-docx?memo_id=00000000-0000-0000-0000-000000000000")
+    assert r2.status_code == 401
