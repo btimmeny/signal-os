@@ -494,3 +494,140 @@ class ReminderResponse(BaseModel):
             delivery_target=obj.delivery_target,
             message=obj.message,
         )
+
+
+# ---------------------------------------------------------------------------
+# Platform Lead schemas
+# ---------------------------------------------------------------------------
+
+class PlatformLeadCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    role: str = Field(..., min_length=1, max_length=512)
+    focus_area: str = Field(..., min_length=1, max_length=512)
+    description: Optional[str] = None
+    initiative_ids: Optional[list[str]] = None
+    active: bool = True
+
+
+class PlatformLeadUpdateRequest(BaseModel):
+    lead_id: str
+    name: Optional[str] = Field(None, min_length=1, max_length=256)
+    role: Optional[str] = Field(None, min_length=1, max_length=512)
+    focus_area: Optional[str] = Field(None, min_length=1, max_length=512)
+    description: Optional[str] = None
+    initiative_ids: Optional[list[str]] = None
+    active: Optional[bool] = None
+
+
+class PlatformLeadResponse(BaseModel):
+    id: str
+    name: str
+    role: str
+    focus_area: str
+    description: Optional[str] = None
+    initiative_ids: Optional[list[str]] = None
+    active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "PlatformLeadResponse":
+        import json
+        init_ids = None
+        if obj.initiative_ids:
+            try:
+                init_ids = json.loads(obj.initiative_ids)
+            except (json.JSONDecodeError, TypeError):
+                init_ids = None
+        return cls(
+            id=str(obj.id),
+            name=obj.name,
+            role=obj.role,
+            focus_area=obj.focus_area,
+            description=obj.description,
+            initiative_ids=init_ids,
+            active=bool(obj.active),
+            created_at=obj.created_at,
+        )
+
+
+class PlatformLeadSeedRequest(BaseModel):
+    leads: list[dict] = Field(..., min_length=1, description="List of {name, role, focus_area, description} objects")
+
+
+# ---------------------------------------------------------------------------
+# Leadership Memo schemas
+# ---------------------------------------------------------------------------
+
+class MemoStatus(str, Enum):
+    DRAFT = "DRAFT"
+    FINALIZED = "FINALIZED"
+    SENT = "SENT"
+
+
+class MemoCreateRequest(BaseModel):
+    author: Optional[str] = None
+    strategic_objective: Optional[str] = None
+
+
+class MemoUpdateRequest(BaseModel):
+    memo_id: str
+    author: Optional[str] = None
+    status: Optional[MemoStatus] = None
+    strategic_objective: Optional[str] = None
+    current_priorities: Optional[list[str]] = None
+    progress_summary: Optional[str] = None
+    focus_next_week: Optional[list[str]] = None
+    success_criteria: Optional[list[str]] = None
+    lead_updates: Optional[dict] = None
+
+
+class MemoResponse(BaseModel):
+    id: str
+    week_start_date: datetime
+    created_at: datetime
+    author: Optional[str] = None
+    status: MemoStatus
+
+    strategic_objective: Optional[str] = None
+    current_priorities: Optional[list[str]] = None
+    progress_summary: Optional[str] = None
+    focus_next_week: Optional[list[str]] = None
+    success_criteria: Optional[list[str]] = None
+
+    lead_updates: Optional[dict] = None
+    dashboard_snapshot: Optional[dict] = None
+    audience: Optional[list[str]] = None
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "MemoResponse":
+        import json
+
+        def _parse_json(val, default=None):
+            if val is None:
+                return default
+            if isinstance(val, (list, dict)):
+                return val
+            try:
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                return default
+
+        return cls(
+            id=str(obj.id),
+            week_start_date=obj.week_start_date,
+            created_at=obj.created_at,
+            author=obj.author,
+            status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            strategic_objective=obj.strategic_objective,
+            current_priorities=_parse_json(obj.current_priorities, []),
+            progress_summary=obj.progress_summary,
+            focus_next_week=_parse_json(obj.focus_next_week, []),
+            success_criteria=_parse_json(obj.success_criteria, []),
+            lead_updates=_parse_json(obj.lead_updates, {}),
+            dashboard_snapshot=_parse_json(obj.dashboard_snapshot, {}),
+            audience=_parse_json(obj.audience, []),
+        )

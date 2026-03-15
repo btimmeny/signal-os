@@ -28,6 +28,9 @@ from app.schemas import (
     InitiativeResponse,
     InitiativeSeedRequest,
     InitiativeUpdateRequest,
+    MemoCreateRequest,
+    MemoResponse,
+    MemoUpdateRequest,
     ObjectiveCreateRequest,
     ObjectiveLinkRequest,
     ObjectiveLinkResponse,
@@ -35,6 +38,10 @@ from app.schemas import (
     ObjectiveUpdateCreateRequest,
     ObjectiveUpdateRequest,
     ObjectiveUpdateResponse,
+    PlatformLeadCreateRequest,
+    PlatformLeadResponse,
+    PlatformLeadSeedRequest,
+    PlatformLeadUpdateRequest,
     ReminderCreateRequest,
     ReminderResponse,
     StatusDataRequest,
@@ -49,9 +56,11 @@ from app.services import comments as comment_svc
 from app.services import commitments as commitment_svc
 from app.services import initiative_links as init_link_svc
 from app.services import initiatives as initiative_svc
+from app.services import leadership_memos as memo_svc
 from app.services import objective_links as link_svc
 from app.services import objective_updates as obj_update_svc
 from app.services import objectives as objective_svc
+from app.services import platform_leads as lead_svc
 from app.services import reminders as reminder_svc
 from app.services import status_reports as report_svc
 from app.services import strategic_themes as theme_svc
@@ -729,6 +738,111 @@ def reminders_due(db: Session = Depends(get_db)):
 def reminders_dispatch(db: Session = Depends(get_db)):
     dispatched = reminder_svc.dispatch_due_reminders(db)
     return [ReminderResponse.from_orm_row(r) for r in dispatched]
+
+
+# ---------------------------------------------------------------------------
+# Platform Leads
+# ---------------------------------------------------------------------------
+
+@app.post("/leads/create", response_model=PlatformLeadResponse)
+def leads_create(body: PlatformLeadCreateRequest, db: Session = Depends(get_db)):
+    lead = lead_svc.create_lead(
+        db,
+        name=body.name,
+        role=body.role,
+        focus_area=body.focus_area,
+        description=body.description,
+        initiative_ids=body.initiative_ids,
+        active=body.active,
+    )
+    return PlatformLeadResponse.from_orm_row(lead)
+
+
+@app.post("/leads/update", response_model=PlatformLeadResponse)
+def leads_update(body: PlatformLeadUpdateRequest, db: Session = Depends(get_db)):
+    fields = body.model_dump(exclude={"lead_id"}, exclude_none=True)
+    lead = lead_svc.update_lead(db, lead_id=body.lead_id, **fields)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Platform lead not found")
+    return PlatformLeadResponse.from_orm_row(lead)
+
+
+@app.get("/leads/list", response_model=list[PlatformLeadResponse])
+def leads_list(
+    db: Session = Depends(get_db),
+    active_only: bool = Query(False),
+):
+    rows = lead_svc.list_leads(db, active_only=active_only)
+    return [PlatformLeadResponse.from_orm_row(l) for l in rows]
+
+
+@app.post("/leads/seed", response_model=list[PlatformLeadResponse])
+def leads_seed(body: PlatformLeadSeedRequest, db: Session = Depends(get_db)):
+    created = lead_svc.seed_leads(db, leads=body.leads)
+    return [PlatformLeadResponse.from_orm_row(l) for l in created]
+
+
+# ---------------------------------------------------------------------------
+# Leadership Memos
+# ---------------------------------------------------------------------------
+
+@app.post("/memos/generate", response_model=MemoResponse)
+def memos_generate(body: MemoCreateRequest, db: Session = Depends(get_db)):
+    """Generate a weekly leadership memo from current dashboard state.
+
+    AI AGENTS: When the user says "/weekly-memo", "generate memo",
+    "leadership memo", or any variation, call this endpoint.
+    It pulls dashboard data, groups by platform lead, and saves as draft.
+    """
+    memo = memo_svc.generate_memo(
+        db,
+        author=body.author,
+        strategic_objective=body.strategic_objective,
+    )
+    return MemoResponse.from_orm_row(memo)
+
+
+@app.post("/memos/update", response_model=MemoResponse)
+def memos_update(body: MemoUpdateRequest, db: Session = Depends(get_db)):
+    fields = body.model_dump(exclude={"memo_id"}, exclude_none=True)
+    if "status" in fields and hasattr(fields["status"], "value"):
+        fields["status"] = fields["status"].value
+    memo = memo_svc.update_memo(db, memo_id=body.memo_id, **fields)
+    if not memo:
+        raise HTTPException(status_code=404, detail="Memo not found")
+    return MemoResponse.from_orm_row(memo)
+
+
+@app.get("/memos/list", response_model=list[MemoResponse])
+def memos_list(
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None),
+):
+    rows = memo_svc.list_memos(db, status=status)
+    return [MemoResponse.from_orm_row(m) for m in rows]
+
+
+@app.get("/memos/get", response_model=MemoResponse)
+def memos_get(
+    memo_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    memo = memo_svc.get_memo(db, memo_id=memo_id)
+    if not memo:
+        raise HTTPException(status_code=404, detail="Memo not found")
+    return MemoResponse.from_orm_row(memo)
+
+
+@app.get("/memos/render", response_class=PlainTextResponse)
+def memos_render(
+    memo_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Render a memo as formatted markdown text for display."""
+    text = memo_svc.format_memo_text(db, memo_id=memo_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Memo not found")
+    return text
 
 
 # ---------------------------------------------------------------------------
