@@ -632,6 +632,22 @@ paths:
               schema:
                 type: string
 
+  /memo:
+    get:
+      operationId: getWeeklyMemo
+      summary: Show the current week's leadership memo
+      description: >
+        ALWAYS call this for /memo, show memo, weekly memo,
+        or ANY memo display request. Returns pre-formatted text.
+        Display EXACTLY as returned. Auto-generates if none exists.
+      responses:
+        "200":
+          description: Pre-formatted markdown memo
+          content:
+            text/plain:
+              schema:
+                type: string
+
   /commitments/open:
     post:
       operationId: openCommitment
@@ -876,26 +892,6 @@ paths:
                 $ref: "#/components/schemas/ObjectiveLink"
         "404":
           description: Objective or commitment not found
-
-  /objectives/links:
-    get:
-      operationId: listLinksForObjective
-      summary: List commitments linked to an objective
-      parameters:
-        - name: objective_id
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: List of commitment links
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ObjectiveLink"
 
   /objectives/update_note:
     post:

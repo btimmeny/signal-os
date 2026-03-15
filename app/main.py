@@ -845,6 +845,18 @@ def memos_render(
     return text
 
 
+@app.get("/memo", response_class=PlainTextResponse)
+def memo_slash_command(db: Session = Depends(get_db)):
+    """Return the current week's memo as pre-formatted markdown text.
+
+    AI AGENTS: When the user says "/memo", "show me the memo", "weekly memo",
+    or any variation, call this endpoint and display the returned text
+    EXACTLY as-is. Do not reformat, reorder, or summarize it.
+    If no memo exists for the current week, one is auto-generated.
+    """
+    return memo_svc.get_or_generate_memo_text(db)
+
+
 @app.get("/memos/export-md", response_class=PlainTextResponse)
 def memos_export_md(
     memo_id: str = Query(...),

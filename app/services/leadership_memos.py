@@ -407,6 +407,23 @@ def get_memo(
     return db.query(LeadershipMemo).filter(LeadershipMemo.id == uuid.UUID(memo_id)).first()
 
 
+def get_or_generate_memo_text(db: Session, *, author: Optional[str] = None) -> str:
+    """Get the latest memo for this week, or generate one. Return formatted text.
+
+    Used by the /memo slash command to provide a single-call workflow.
+    """
+    week_start = _week_start()
+    memo = (
+        db.query(LeadershipMemo)
+        .filter(LeadershipMemo.week_start_date == week_start)
+        .order_by(LeadershipMemo.created_at.desc())
+        .first()
+    )
+    if not memo:
+        memo = generate_memo(db, author=author)
+    return format_memo_markdown(memo)
+
+
 def _parse_json_field(val: object, default: object = None) -> object:
     """Parse a JSON-encoded text field, returning default if not parseable."""
     if val is None:
