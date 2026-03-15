@@ -489,6 +489,88 @@ components:
           type: string
           format: date-time
 
+    Memo:
+      type: object
+      properties:
+        id:
+          type: string
+        week_start_date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        author:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, FINALIZED, SENT]
+        strategic_objective:
+          type: string
+          nullable: true
+        current_priorities:
+          type: array
+          items:
+            type: string
+          nullable: true
+        progress_summary:
+          type: string
+          nullable: true
+        focus_next_week:
+          type: array
+          items:
+            type: string
+          nullable: true
+        success_criteria:
+          type: array
+          items:
+            type: string
+          nullable: true
+        lead_updates:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: object
+            properties:
+              role:
+                type: string
+              focus:
+                type: string
+              progress:
+                type: array
+                items:
+                  type: string
+              next_focus:
+                type: array
+                items:
+                  type: string
+        dashboard_snapshot:
+          type: object
+          nullable: true
+          properties:
+            top_focus:
+              type: array
+              items:
+                type: string
+            needs_decision:
+              type: array
+              items:
+                type: string
+            due_soon:
+              type: array
+              items:
+                type: string
+            active_workstreams:
+              type: array
+              items:
+                type: string
+        audience:
+          type: array
+          items:
+            type: string
+          nullable: true
+
     InitiativeSeedRequest:
       type: object
       required: [titles]
@@ -951,27 +1033,33 @@ paths:
         "404":
           description: Theme not found
 
-  /themes/seed:
+  /memos/generate:
     post:
-      operationId: seedThemes
-      summary: Seed strategic themes
+      operationId: generateWeeklyMemo
+      summary: Generate a weekly leadership alignment memo
       description: >-
-        Creates themes that do not yet exist. Skips duplicates.
+        Pulls dashboard state, groups by platform lead, saves as draft.
+        Call for /weekly-memo or generate memo requests.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ThemeSeedRequest"
+              type: object
+              properties:
+                author:
+                  type: string
+                  nullable: true
+                strategic_objective:
+                  type: string
+                  nullable: true
       responses:
         "200":
-          description: Newly created themes
+          description: Generated memo draft
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Theme"
+                $ref: "#/components/schemas/Memo"
 
   /initiatives/create:
     post:

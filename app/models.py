@@ -77,6 +77,12 @@ class ReportPeriod(str, enum.Enum):
     ANNUAL = "ANNUAL"
 
 
+class MemoStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    FINALIZED = "FINALIZED"
+    SENT = "SENT"
+
+
 # ---------------------------------------------------------------------------
 # Commitment
 # ---------------------------------------------------------------------------
@@ -478,3 +484,74 @@ class Reminder(Base):
 
     def __repr__(self) -> str:
         return f"<Reminder {self.id} for={self.commitment_id} at={self.remind_at}>"
+
+
+# ---------------------------------------------------------------------------
+# Platform Lead
+# ---------------------------------------------------------------------------
+
+class PlatformLead(Base):
+    __tablename__ = "platform_leads"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name = Column(String(256), nullable=False, index=True)
+    role = Column(String(512), nullable=False)
+    focus_area = Column(String(512), nullable=False)
+    description = Column(Text, nullable=True)
+    initiative_ids = Column(Text, nullable=True)  # JSON array of initiative UUIDs
+    active = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PlatformLead {self.id} name={self.name!r} role={self.role!r}>"
+
+
+# ---------------------------------------------------------------------------
+# Leadership Memo
+# ---------------------------------------------------------------------------
+
+class LeadershipMemo(Base):
+    __tablename__ = "leadership_memos"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    week_start_date = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    author = Column(String(256), nullable=True)
+    status = Column(
+        Enum(MemoStatus, name="memo_status", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=MemoStatus.DRAFT,
+    )
+
+    strategic_objective = Column(Text, nullable=True)
+    current_priorities = Column(Text, nullable=True)  # JSON array
+    progress_summary = Column(Text, nullable=True)
+    focus_next_week = Column(Text, nullable=True)  # JSON array
+    success_criteria = Column(Text, nullable=True)  # JSON array
+
+    lead_updates = Column(Text, nullable=True)  # JSON object
+    dashboard_snapshot = Column(Text, nullable=True)  # JSON object
+    audience = Column(Text, nullable=True)  # JSON array
+
+    def __repr__(self) -> str:
+        return f"<LeadershipMemo {self.id} week={self.week_start_date} status={self.status}>"
