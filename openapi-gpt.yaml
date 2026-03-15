@@ -877,22 +877,6 @@ paths:
         "404":
           description: Objective or commitment not found
 
-  /objectives/unlink:
-    post:
-      operationId: unlinkCommitmentFromObjective
-      summary: Remove link between commitment and objective
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ObjectiveLinkRequest"
-      responses:
-        "200":
-          description: Link removed
-        "404":
-          description: Link not found
-
   /objectives/links:
     get:
       operationId: listLinksForObjective
@@ -1188,22 +1172,6 @@ paths:
         "404":
           description: Initiative or commitment not found
 
-  /initiatives/unlink:
-    post:
-      operationId: unlinkCommitmentFromInitiative
-      summary: Remove link between commitment and initiative
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InitiativeLinkRequest"
-      responses:
-        "200":
-          description: Link removed
-        "404":
-          description: Link not found
-
   /initiatives/links:
     get:
       operationId: listLinksForInitiative
@@ -1223,3 +1191,48 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/InitiativeLink"
+
+  /memos/export-md:
+    get:
+      operationId: exportMemoMarkdown
+      summary: Export memo as markdown (.md) file
+      description: >-
+        Returns the memo as a markdown document for download.
+      parameters:
+        - name: memo_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Markdown file
+          content:
+            text/markdown:
+              schema:
+                type: string
+        "404":
+          description: Memo not found
+
+  /memos/export-docx:
+    get:
+      operationId: exportMemoDocx
+      summary: Export memo as Word (.docx) file
+      description: >-
+        Returns the memo as a .docx Word document for download.
+      parameters:
+        - name: memo_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Word document file
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Memo not found

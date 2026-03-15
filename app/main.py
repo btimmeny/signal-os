@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -843,6 +843,47 @@ def memos_render(
     if text is None:
         raise HTTPException(status_code=404, detail="Memo not found")
     return text
+
+
+@app.get("/memos/export-md", response_class=PlainTextResponse)
+def memos_export_md(
+    memo_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Export a memo as a markdown (.md) file with proper headings.
+
+    AI AGENTS: When the user says "export memo", "download memo as markdown",
+    or "save memo to md", call this endpoint. Returns the memo as a markdown
+    document ready for saving to a file.
+    """
+    md_text = memo_svc.export_memo_md(db, memo_id=memo_id)
+    if md_text is None:
+        raise HTTPException(status_code=404, detail="Memo not found")
+    return PlainTextResponse(
+        content=md_text,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="memo-{memo_id[:8]}.md"'},
+    )
+
+
+@app.get("/memos/export-docx")
+def memos_export_docx(
+    memo_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Export a memo as a Word (.docx) file for distribution.
+
+    AI AGENTS: When the user says "export memo to word", "download memo as docx",
+    or "create word document", call this endpoint. Returns a .docx file.
+    """
+    docx_bytes = memo_svc.export_memo_docx(db, memo_id=memo_id)
+    if docx_bytes is None:
+        raise HTTPException(status_code=404, detail="Memo not found")
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="memo-{memo_id[:8]}.docx"'},
+    )
 
 
 # ---------------------------------------------------------------------------

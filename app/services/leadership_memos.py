@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import io
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from docx import Document
+from docx.shared import Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -401,3 +405,194 @@ def get_memo(
 ) -> Optional[LeadershipMemo]:
     """Get a single memo by ID."""
     return db.query(LeadershipMemo).filter(LeadershipMemo.id == uuid.UUID(memo_id)).first()
+
+
+def _parse_json_field(val: object, default: object = None) -> object:
+    """Parse a JSON-encoded text field, returning default if not parseable."""
+    if val is None:
+        return default
+    if isinstance(val, (list, dict)):
+        return val
+    try:
+        return json.loads(val)
+    except (json.JSONDecodeError, TypeError):
+        return default
+
+
+def format_memo_markdown(memo: LeadershipMemo) -> str:
+    """Render a memo as a proper markdown document with # headings."""
+    audience = _parse_json_field(memo.audience, DEFAULT_AUDIENCE)
+    priorities = _parse_json_field(memo.current_priorities, [])
+    lead_updates = _parse_json_field(memo.lead_updates, {})
+    focus_next = _parse_json_field(memo.focus_next_week, [])
+    criteria = _parse_json_field(memo.success_criteria, [])
+
+    lines: list[str] = []
+    lines.append("# AI Platform Weekly Leadership Memo")
+    lines.append("")
+    lines.append(f"**To:** {', '.join(audience)}")
+    lines.append(f"**From:** {memo.author or 'Leadership'}")
+    lines.append(f"**Date:** {memo.week_start_date.strftime('%B %-d, %Y')}")
+    lines.append(f"**Status:** {memo.status.value if hasattr(memo.status, 'value') else memo.status}")
+    lines.append("")
+
+    lines.append("## Strategic Objective")
+    lines.append("")
+    lines.append(memo.strategic_objective or DEFAULT_STRATEGIC_OBJECTIVE)
+    lines.append("")
+
+    if priorities:
+        lines.append("## Current Priorities")
+        lines.append("")
+        for p in priorities:
+            lines.append(f"- {p}")
+        lines.append("")
+
+    if lead_updates:
+        lines.append("## Platform Updates")
+        lines.append("")
+        for name, info in lead_updates.items():
+            role = info.get("role", "")
+            focus = info.get("focus", "")
+            progress = info.get("progress", [])
+            next_focus_items = info.get("next_focus", [])
+
+            lines.append(f"### {role} — {name}")
+            lines.append(f"**Focus:** {focus}")
+            lines.append("")
+            lines.append("**Progress**")
+            if progress:
+                for item in progress:
+                    lines.append(f"- {item}")
+            else:
+                lines.append("- No updates this week")
+            lines.append("")
+            lines.append("**Next Focus**")
+            if next_focus_items:
+                for item in next_focus_items:
+                    lines.append(f"- {item}")
+            else:
+                lines.append("- Derived from priorities and due soon work")
+            lines.append("")
+
+    if focus_next:
+        lines.append("## Focus for Next Week")
+        lines.append("")
+        for item in focus_next:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    if criteria:
+        lines.append("## Success Criteria")
+        lines.append("")
+        lines.append("This week will be successful if we:")
+        lines.append("")
+        for item in criteria:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+    lines.append("*The emphasis should be on outcomes rather than activity.*")
+
+    return "\n".join(lines)
+
+
+def export_memo_md(db: Session, memo_id: str) -> Optional[str]:
+    """Export a memo as a markdown document. Returns None if not found."""
+    memo = db.query(LeadershipMemo).filter(LeadershipMemo.id == uuid.UUID(memo_id)).first()
+    if not memo:
+        return None
+    return format_memo_markdown(memo)
+
+
+def export_memo_docx(db: Session, memo_id: str) -> Optional[bytes]:
+    """Export a memo as a .docx Word document. Returns bytes or None if not found."""
+    memo = db.query(LeadershipMemo).filter(LeadershipMemo.id == uuid.UUID(memo_id)).first()
+    if not memo:
+        return None
+
+    audience = _parse_json_field(memo.audience, DEFAULT_AUDIENCE)
+    priorities = _parse_json_field(memo.current_priorities, [])
+    lead_updates = _parse_json_field(memo.lead_updates, {})
+    focus_next = _parse_json_field(memo.focus_next_week, [])
+    criteria = _parse_json_field(memo.success_criteria, [])
+
+    doc = Document()
+
+    # Style defaults
+    style = doc.styles["Normal"]
+    font = style.font
+    font.name = "Calibri"
+    font.size = Pt(11)
+
+    # Title
+    title_para = doc.add_heading("AI Platform Weekly Leadership Memo", level=0)
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Metadata
+    doc.add_paragraph(f"To: {', '.join(audience)}")
+    doc.add_paragraph(f"From: {memo.author or 'Leadership'}")
+    doc.add_paragraph(f"Date: {memo.week_start_date.strftime('%B %-d, %Y')}")
+    status_val = memo.status.value if hasattr(memo.status, "value") else memo.status
+    doc.add_paragraph(f"Status: {status_val}")
+
+    # Strategic Objective
+    doc.add_heading("Strategic Objective", level=1)
+    doc.add_paragraph(memo.strategic_objective or DEFAULT_STRATEGIC_OBJECTIVE)
+
+    # Current Priorities
+    if priorities:
+        doc.add_heading("Current Priorities", level=1)
+        for p in priorities:
+            doc.add_paragraph(p, style="List Bullet")
+
+    # Platform Updates
+    if lead_updates:
+        doc.add_heading("Platform Updates", level=1)
+        for name, info in lead_updates.items():
+            role = info.get("role", "")
+            focus = info.get("focus", "")
+            progress = info.get("progress", [])
+            next_focus_items = info.get("next_focus", [])
+
+            doc.add_heading(f"{role} — {name}", level=2)
+            doc.add_paragraph(f"Focus: {focus}")
+
+            doc.add_heading("Progress", level=3)
+            if progress:
+                for item in progress:
+                    doc.add_paragraph(item, style="List Bullet")
+            else:
+                doc.add_paragraph("No updates this week", style="List Bullet")
+
+            doc.add_heading("Next Focus", level=3)
+            if next_focus_items:
+                for item in next_focus_items:
+                    doc.add_paragraph(item, style="List Bullet")
+            else:
+                doc.add_paragraph("Derived from priorities and due soon work", style="List Bullet")
+
+    # Focus for Next Week
+    if focus_next:
+        doc.add_heading("Focus for Next Week", level=1)
+        for item in focus_next:
+            doc.add_paragraph(item, style="List Bullet")
+
+    # Success Criteria
+    if criteria:
+        doc.add_heading("Success Criteria", level=1)
+        doc.add_paragraph("This week will be successful if we:")
+        for item in criteria:
+            doc.add_paragraph(item, style="List Bullet")
+
+    # Footer
+    doc.add_paragraph("")
+    footer_para = doc.add_paragraph("The emphasis should be on outcomes rather than activity.")
+    footer_para.italic = True
+
+    # Write to bytes
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
