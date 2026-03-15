@@ -15,7 +15,7 @@ from app.db import Base, get_db  # noqa: E402
 from app.models import (  # noqa: E402, F401 — register models
     Commitment, CommitmentComment, Initiative, InitiativeCommitmentLink,
     ObjectiveCommitmentLink, ObjectiveUpdate, Reminder, StatusReport,
-    StrategicObjective,
+    StrategicObjective, StrategicTheme,
 )
 from app.main import app  # noqa: E402
 

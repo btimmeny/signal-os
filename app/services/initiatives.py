@@ -16,6 +16,7 @@ def create_initiative(
     title: str,
     description: Optional[str] = None,
     status: str = "ACTIVE",
+    theme_id: Optional[str] = None,
 ) -> Initiative:
     """Create a new initiative."""
     init = Initiative(
@@ -23,6 +24,7 @@ def create_initiative(
         title=title,
         description=description,
         status=InitiativeStatus(status),
+        theme_id=uuid.UUID(theme_id) if theme_id else None,
     )
     db.add(init)
     db.commit()
@@ -45,6 +47,8 @@ def update_initiative(
         if v is not None:
             if k == "status":
                 v = InitiativeStatus(v)
+            elif k == "theme_id":
+                v = uuid.UUID(v) if isinstance(v, str) else v
             setattr(init, k, v)
 
     db.commit()
@@ -99,3 +103,17 @@ def seed_initiatives(
         for init in created:
             db.refresh(init)
     return created
+
+
+def get_initiative_task_count(db: Session, *, initiative_id: str) -> int:
+    """Return the number of open (non-CLOSED) commitments linked to an initiative."""
+    from app.models import Commitment, CommitmentStatus, InitiativeCommitmentLink
+    return (
+        db.query(InitiativeCommitmentLink)
+        .join(Commitment, InitiativeCommitmentLink.commitment_id == Commitment.id)
+        .filter(
+            InitiativeCommitmentLink.initiative_id == uuid.UUID(initiative_id),
+            Commitment.status != CommitmentStatus.CLOSED,
+        )
+        .count()
+    )

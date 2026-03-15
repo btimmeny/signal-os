@@ -358,6 +358,74 @@ components:
           type: string
           format: date-time
 
+    ThemeCreateRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          default: ACTIVE
+
+    ThemeUpdateRequest:
+      type: object
+      required: [theme_id]
+      properties:
+        theme_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+          nullable: true
+
+    Theme:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ThemeSeedRequest:
+      type: object
+      required: [themes]
+      properties:
+        themes:
+          type: array
+          items:
+            type: object
+            required: [title]
+            properties:
+              title:
+                type: string
+              description:
+                type: string
+                nullable: true
+          minItems: 1
+
     InitiativeCreateRequest:
       type: object
       required: [title]
@@ -371,6 +439,9 @@ components:
           type: string
           enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
           default: ACTIVE
+        theme_id:
+          type: string
+          nullable: true
 
     InitiativeUpdateRequest:
       type: object
@@ -388,6 +459,9 @@ components:
           type: string
           enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
           nullable: true
+        theme_id:
+          type: string
+          nullable: true
 
     Initiative:
       type: object
@@ -402,6 +476,12 @@ components:
         status:
           type: string
           enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+        theme_id:
+          type: string
+          nullable: true
+        theme_title:
+          type: string
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -790,6 +870,108 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ObjectiveUpdateNote"
+
+  /themes/create:
+    post:
+      operationId: createTheme
+      summary: Create a new strategic theme
+      description: >-
+        Create a top-level strategic theme to group initiatives.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThemeCreateRequest"
+      responses:
+        "200":
+          description: Created theme
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Theme"
+
+  /themes/update:
+    post:
+      operationId: updateTheme
+      summary: Update a strategic theme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThemeUpdateRequest"
+      responses:
+        "200":
+          description: Updated theme
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Theme"
+        "404":
+          description: Theme not found
+
+  /themes/list:
+    get:
+      operationId: listThemes
+      summary: List strategic themes
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, DEFERRED, CANCELLED]
+      responses:
+        "200":
+          description: List of themes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Theme"
+
+  /themes/get:
+    get:
+      operationId: getTheme
+      summary: Get a single theme by ID
+      parameters:
+        - name: theme_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The theme
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Theme"
+        "404":
+          description: Theme not found
+
+  /themes/seed:
+    post:
+      operationId: seedThemes
+      summary: Seed strategic themes
+      description: >-
+        Creates themes that do not yet exist. Skips duplicates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThemeSeedRequest"
+      responses:
+        "200":
+          description: Newly created themes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Theme"
 
   /initiatives/create:
     post:

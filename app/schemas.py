@@ -169,6 +169,56 @@ class CommentResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Strategic Theme schemas
+# ---------------------------------------------------------------------------
+
+class ThemeStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
+class ThemeCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=512)
+    description: Optional[str] = None
+    status: ThemeStatus = ThemeStatus.ACTIVE
+
+
+class ThemeUpdateRequest(BaseModel):
+    theme_id: str
+    title: Optional[str] = Field(None, min_length=1, max_length=512)
+    description: Optional[str] = None
+    status: Optional[ThemeStatus] = None
+
+
+class ThemeResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    status: ThemeStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ThemeResponse":
+        return cls(
+            id=str(obj.id),
+            title=obj.title,
+            description=obj.description,
+            status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            created_at=obj.created_at,
+            updated_at=obj.updated_at,
+        )
+
+
+class ThemeSeedRequest(BaseModel):
+    themes: list[dict] = Field(..., min_length=1, description="List of {title, description} objects")
+
+
+# ---------------------------------------------------------------------------
 # Initiative schemas
 # ---------------------------------------------------------------------------
 
@@ -183,6 +233,7 @@ class InitiativeCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=512)
     description: Optional[str] = None
     status: InitiativeStatus = InitiativeStatus.ACTIVE
+    theme_id: Optional[str] = None
 
 
 class InitiativeUpdateRequest(BaseModel):
@@ -190,6 +241,7 @@ class InitiativeUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=512)
     description: Optional[str] = None
     status: Optional[InitiativeStatus] = None
+    theme_id: Optional[str] = None
 
 
 class InitiativeResponse(BaseModel):
@@ -197,6 +249,8 @@ class InitiativeResponse(BaseModel):
     title: str
     description: Optional[str] = None
     status: InitiativeStatus
+    theme_id: Optional[str] = None
+    theme_title: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -204,11 +258,16 @@ class InitiativeResponse(BaseModel):
 
     @classmethod
     def from_orm_row(cls, obj) -> "InitiativeResponse":
+        theme_title = None
+        if hasattr(obj, 'theme') and obj.theme:
+            theme_title = obj.theme.title
         return cls(
             id=str(obj.id),
             title=obj.title,
             description=obj.description,
             status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            theme_id=str(obj.theme_id) if obj.theme_id else None,
+            theme_title=theme_title,
             created_at=obj.created_at,
             updated_at=obj.updated_at,
         )

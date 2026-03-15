@@ -40,6 +40,10 @@ from app.schemas import (
     StatusDataRequest,
     StatusReportCreateRequest,
     StatusReportResponse,
+    ThemeCreateRequest,
+    ThemeResponse,
+    ThemeSeedRequest,
+    ThemeUpdateRequest,
 )
 from app.services import comments as comment_svc
 from app.services import commitments as commitment_svc
@@ -50,6 +54,7 @@ from app.services import objective_updates as obj_update_svc
 from app.services import objectives as objective_svc
 from app.services import reminders as reminder_svc
 from app.services import status_reports as report_svc
+from app.services import strategic_themes as theme_svc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -312,6 +317,58 @@ def tasks_formatted(db: Session = Depends(get_db)):
 # Initiatives
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Strategic Themes
+# ---------------------------------------------------------------------------
+
+@app.post("/themes/create", response_model=ThemeResponse)
+def themes_create(body: ThemeCreateRequest, db: Session = Depends(get_db)):
+    theme = theme_svc.create_theme(
+        db,
+        title=body.title,
+        description=body.description,
+        status=body.status.value,
+    )
+    return ThemeResponse.from_orm_row(theme)
+
+
+@app.post("/themes/update", response_model=ThemeResponse)
+def themes_update(body: ThemeUpdateRequest, db: Session = Depends(get_db)):
+    fields = body.model_dump(exclude={"theme_id"}, exclude_none=True)
+    if "status" in fields and hasattr(fields["status"], "value"):
+        fields["status"] = fields["status"].value
+    theme = theme_svc.update_theme(db, theme_id=body.theme_id, **fields)
+    if not theme:
+        raise HTTPException(status_code=404, detail="Theme not found")
+    return ThemeResponse.from_orm_row(theme)
+
+
+@app.get("/themes/list", response_model=list[ThemeResponse])
+def themes_list(
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None),
+):
+    rows = theme_svc.list_themes(db, status=status)
+    return [ThemeResponse.from_orm_row(t) for t in rows]
+
+
+@app.get("/themes/get", response_model=ThemeResponse)
+def themes_get(
+    theme_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    theme = theme_svc.get_theme(db, theme_id=theme_id)
+    if not theme:
+        raise HTTPException(status_code=404, detail="Theme not found")
+    return ThemeResponse.from_orm_row(theme)
+
+
+@app.post("/themes/seed", response_model=list[ThemeResponse])
+def themes_seed(body: ThemeSeedRequest, db: Session = Depends(get_db)):
+    created = theme_svc.seed_themes(db, themes=body.themes)
+    return [ThemeResponse.from_orm_row(t) for t in created]
+
+
 @app.post("/initiatives/create", response_model=InitiativeResponse)
 def initiatives_create(body: InitiativeCreateRequest, db: Session = Depends(get_db)):
     init = initiative_svc.create_initiative(
@@ -319,6 +376,7 @@ def initiatives_create(body: InitiativeCreateRequest, db: Session = Depends(get_
         title=body.title,
         description=body.description,
         status=body.status.value,
+        theme_id=body.theme_id,
     )
     return InitiativeResponse.from_orm_row(init)
 
@@ -364,7 +422,7 @@ def initiatives_get(
 # Initiative-Commitment Links
 # ---------------------------------------------------------------------------
 
-@app.post("/initiatives/link", response_model=InitiativeLinkResponse)
+@app.post("/initiatives/link")
 def initiatives_link(body: InitiativeLinkRequest, db: Session = Depends(get_db)):
     commitment_id = body.commitment_id
 
@@ -395,7 +453,17 @@ def initiatives_link(body: InitiativeLinkRequest, db: Session = Depends(get_db))
     )
     if not link:
         raise HTTPException(status_code=404, detail="Initiative or commitment not found")
-    return InitiativeLinkResponse.from_orm_row(link)
+
+    # Check initiative focus — warn if >15 active tasks
+    task_count = initiative_svc.get_initiative_task_count(db, initiative_id=body.initiative_id)
+    warning = None
+    if task_count > 15:
+        warning = f"Initiative has {task_count} active tasks. Consider splitting into multiple initiatives."
+
+    response = InitiativeLinkResponse.from_orm_row(link).model_dump(mode="json")
+    if warning:
+        response["warning"] = warning
+    return response
 
 
 @app.post("/initiatives/unlink")
