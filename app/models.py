@@ -49,6 +49,13 @@ class ChannelType(str, enum.Enum):
     OTHER = "other"
 
 
+class ThemeStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
 class InitiativeStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     COMPLETED = "COMPLETED"
@@ -142,6 +149,46 @@ class Commitment(Base):
 
 
 # ---------------------------------------------------------------------------
+# Strategic Theme
+# ---------------------------------------------------------------------------
+
+class StrategicTheme(Base):
+    __tablename__ = "strategic_themes"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    title = Column(String(512), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    status = Column(
+        Enum(ThemeStatus, name="theme_status", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=ThemeStatus.ACTIVE,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    initiatives = relationship(
+        "Initiative", back_populates="theme",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<StrategicTheme {self.id} title={self.title!r} status={self.status}>"
+
+
+# ---------------------------------------------------------------------------
 # Initiative
 # ---------------------------------------------------------------------------
 
@@ -160,6 +207,12 @@ class Initiative(Base):
         nullable=False,
         default=InitiativeStatus.ACTIVE,
     )
+    theme_id = Column(
+        Uuid,
+        ForeignKey("strategic_themes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -172,6 +225,7 @@ class Initiative(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    theme = relationship("StrategicTheme", back_populates="initiatives")
     commitment_links = relationship(
         "InitiativeCommitmentLink", back_populates="initiative", cascade="all, delete-orphan",
         lazy="select",

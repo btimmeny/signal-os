@@ -21,6 +21,8 @@ from app.models import (
     InitiativeStatus,
     ObjectiveCommitmentLink,
     StrategicObjective,
+    StrategicTheme,
+    ThemeStatus,
     Urgency,
 )
 
@@ -505,10 +507,13 @@ def format_dashboard_text(db: Session) -> str:
     """Return all non-CLOSED commitments as pre-formatted markdown text.
 
     The text is ready to display verbatim — no reformatting needed.
-    Three sections (in order):
+    Hierarchy: Strategic Theme → Initiative → Task (Commitment)
+
+    Sections (in order):
       1. Priority Execution — items whose description contains "Priority N."
-      2. Initiatives — ACTIVE initiatives with their linked commitments grouped beneath
-      3. Everything Else — all remaining open tasks not in the above sections
+      2. Strategic Themes — grouped by theme, then by initiative, then tasks
+      3. Unthemed Initiatives — initiatives not linked to any theme
+      4. Everything Else — remaining open tasks not in the above sections
     Each task appears on a single line with (person, due date).
     """
     all_open = (
@@ -527,6 +532,15 @@ def format_dashboard_text(db: Session) -> str:
         .order_by(Initiative.created_at.asc())
         .all()
     )
+
+    # Load active themes
+    active_themes = (
+        db.query(StrategicTheme)
+        .filter(StrategicTheme.status == ThemeStatus.ACTIVE)
+        .order_by(StrategicTheme.created_at.asc())
+        .all()
+    )
+    theme_map = {str(t.id): t for t in active_themes}
 
     # Map: initiative_id -> list of linked open commitment objects
     initiative_commitments: dict[str, list[Commitment]] = {}
@@ -551,7 +565,7 @@ def format_dashboard_text(db: Session) -> str:
             grouped.sort(key=lambda c: _sort_key(c))
             initiative_commitments[str(init.id)] = grouped
 
-    # Categorise into three sections
+    # Categorise into priority vs everything else
     priority_exec: list[tuple[int, Commitment]] = []  # (priority_number, commitment)
     everything_else: list[Commitment] = []
 
@@ -576,18 +590,40 @@ def format_dashboard_text(db: Session) -> str:
             lines.append(f"{i}. {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
-    # Initiatives — each initiative as a sub-header with linked tasks beneath
-    has_initiative_content = any(
-        str(init.id) in initiative_commitments for init in active_initiatives
-    )
-    if has_initiative_content:
-        lines.append("Initiatives")
-        for init in active_initiatives:
+    # Group initiatives by theme
+    themed_initiatives: dict[str, list[Initiative]] = {}  # theme_id -> [initiatives]
+    unthemed_initiatives: list[Initiative] = []
+
+    for init in active_initiatives:
+        init_id = str(init.id)
+        if init_id not in initiative_commitments:
+            continue  # skip initiatives with no open tasks
+        if init.theme_id and str(init.theme_id) in theme_map:
+            themed_initiatives.setdefault(str(init.theme_id), []).append(init)
+        else:
+            unthemed_initiatives.append(init)
+
+    # Render themed initiatives grouped under each theme
+    for theme in active_themes:
+        theme_id = str(theme.id)
+        if theme_id not in themed_initiatives:
+            continue
+        lines.append(theme.title)
+        for init in themed_initiatives[theme_id]:
             init_id = str(init.id)
-            if init_id in initiative_commitments:
-                lines.append(init.title)
-                for c in initiative_commitments[init_id]:
-                    lines.append(f"  \u2022 {c.title}{_task_line_suffix(c)}")
+            lines.append(f"  {init.title}")
+            for c in initiative_commitments[init_id]:
+                lines.append(f"    \u2022 {c.title}{_task_line_suffix(c)}")
+        lines.append("")
+
+    # Render unthemed initiatives
+    if unthemed_initiatives:
+        lines.append("Other Initiatives")
+        for init in unthemed_initiatives:
+            init_id = str(init.id)
+            lines.append(f"  {init.title}")
+            for c in initiative_commitments[init_id]:
+                lines.append(f"    \u2022 {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
     # Everything Else

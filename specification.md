@@ -325,6 +325,7 @@ Each feature is documented independently in the `features/` directory. Features 
 | 013 | Task List Categories | [`features/013-task-list-categories-2026-03-03`](features/013-task-list-categories-2026-03-03/specification-feature-task-list-categories.md) | 2026-03-03 | Reformatted `/tasks` into six emoji-headed categories: Ranked Execution, Immediate, Time-Bound, Strategy, HR, Administration |
 | 014 | Initiatives | [`features/014-initiatives-2026-03-13`](features/014-initiatives-2026-03-13/specification-feature-initiatives.md) | 2026-03-13 | Added initiatives as first-class entities with CRUD, commitment linking, and reformatted `/tasks` into 3 sections: Priority Execution, Initiatives, Everything Else |
 | 015 | Initiative-Grouped Rendering | [`features/015-initiative-grouped-rendering-2026-03-13`](features/015-initiative-grouped-rendering-2026-03-13/specification-feature-initiative-grouped-rendering.md) | 2026-03-13 | Replaced flat "Initiative:" title-prefix rendering with join-table-based grouping: initiatives as headers with linked tasks indented beneath. Added `/initiatives/seed` endpoint. |
+| 016 | Strategic Themes | [`features/016-strategic-themes-2026-03-15`](features/016-strategic-themes-2026-03-15/specification-feature-strategic-themes.md) | 2026-03-15 | Added Strategic Themes as top-level hierarchy (Theme → Initiative → Task). CRUD + seed endpoints, theme-level grouping in `/tasks`, initiative focus warning (>15 tasks). |
 
 ## 11. Future Considerations
 
