@@ -840,15 +840,29 @@ def send_update_email(update: WeeklyStrategyUpdate) -> bool:
     msg["Subject"] = subject
     msg.attach(MIMEText(email_body, "plain"))
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(gmail_user, gmail_password)
-            server.sendmail(gmail_user, [recipient], msg.as_string())
-        log.info("Friday update email sent to %s", recipient)
-        return True
-    except Exception:
-        log.exception("Failed to send Friday update email")
-        return False
+    # Try port 587 (STARTTLS) first — more commonly allowed on cloud platforms,
+    # then fall back to port 465 (SSL) if that fails.
+    for method, port in [("STARTTLS", 587), ("SSL", 465)]:
+        try:
+            if method == "STARTTLS":
+                with smtplib.SMTP("smtp.gmail.com", port, timeout=30) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(gmail_user, gmail_password)
+                    server.sendmail(gmail_user, [recipient], msg.as_string())
+            else:
+                with smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30) as server:
+                    server.login(gmail_user, gmail_password)
+                    server.sendmail(gmail_user, [recipient], msg.as_string())
+            log.info("Friday update email sent to %s via %s:%d", recipient, method, port)
+            return True
+        except Exception:
+            log.warning("SMTP %s:%d failed", method, port, exc_info=True)
+            continue
+
+    log.error("All SMTP methods failed — could not send Friday update email")
+    return False
 
 
 # ---------------------------------------------------------------------------
