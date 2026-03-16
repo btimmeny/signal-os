@@ -91,6 +91,53 @@ Automatically convert task activity into strategic insight and produce scheduled
 - All reasoning inputs loaded from datastore
 - Workflow: retrieve data → analyze → generate narrative → store outputs
 
+## SECTION 6 — Friday ChatGPT Review Session
+
+Each Friday update creates a dedicated ChatGPT conversation session.
+
+### Session Management
+- **Session title**: "AI Platform Weekly Memo Review — YYYY-MM-DD"
+- Only one session per week (idempotent — reuse if one already exists)
+- Status transitions: open → finalized
+
+### Session Initialization
+Preload the conversation with:
+- Strategic objective
+- Weekly execution signals
+- Strategy Confidence Score
+- Three narrative drafts
+- Narrative explanations
+- Recommended narrative
+- Strategic continuity analysis
+
+### Opening Message
+> Below are the three narrative drafts for this week's AI Platform leadership update along with the recommended option. Let's refine this together.
+
+### New Tables
+
+6. **weekly_review_sessions** — Tracks ChatGPT review sessions per week
+   - id, week_date, session_title, chatgpt_session_link, status, created_at
+
+## SECTION 7 — Strategy Debrief Conversation
+
+At the beginning of each review session, the system initiates a structured Strategy Debrief.
+
+### Default Debrief Questions
+1. What progress this week most meaningfully advanced the platform objective?
+2. Where do you believe we made less progress than expected?
+3. Is there a signal that our strategy might need adjustment?
+4. What should the team feel most momentum about right now?
+
+### Debrief Storage
+- Brian's responses stored in StrategyDebriefRecords (not session memory)
+- Each record includes: question, response, derived_insight
+- Idempotent per week — same question updates rather than duplicates
+
+### New Tables
+
+7. **strategy_debrief_records** — Stores debrief Q&A per week
+   - id, week_date, question, response, derived_insight, recorded_at
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -105,6 +152,16 @@ Automatically convert task activity into strategic insight and produce scheduled
 | GET | /intelligence/confidence-latest | Get most recent score |
 | GET | /intelligence/weekly-narratives | Get current week's 3 narrative drafts |
 | GET | /intelligence/recommended-narrative | Get recommended narrative |
+| POST | /intelligence/review-sessions | Create/get review session for this week |
+| GET | /intelligence/review-sessions | List recent review sessions |
+| GET | /intelligence/review-sessions/current | Get current week's session |
+| PATCH | /intelligence/review-sessions/{id} | Update session link/status |
+| POST | /intelligence/review-sessions/finalize | Finalize current week's session |
+| GET | /intelligence/review-sessions/init-data | Get session initialization payload |
+| POST | /intelligence/debrief | Create a debrief record |
+| GET | /intelligence/debrief | List debrief records for current week |
+| PATCH | /intelligence/debrief/{id} | Update debrief response/insight |
+| POST | /intelligence/debrief/seed | Seed default debrief questions |
 
 ## Dependencies
 
