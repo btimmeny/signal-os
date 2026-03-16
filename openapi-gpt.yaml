@@ -625,14 +625,11 @@ paths:
       operationId: getFormattedTaskList
       summary: Show all open tasks grouped and formatted
       description: >
-        ALWAYS call this for /tasks, show tasks, what's open,
-        or ANY listing request. Response is pre-formatted text
-        with intentional structure: sections, indented groups,
-        and bracket tags like [Step N] [Group Name]. Display
-        EXACTLY as returned — same sections, same order, same
-        indentation, same grouping. Do NOT rename sections,
-        merge groups, reorder tasks, or restructure the output.
-        NEVER build a task list from other endpoints.
+        Call for /tasks, show tasks, what's open. Response is
+        pre-formatted with sections and [Step N] [Group] tags.
+        Display EXACTLY as returned. Do NOT rename sections,
+        merge groups, reorder, or restructure. Never use other
+        endpoints to build a task list.
       responses:
         "200":
           description: Pre-formatted markdown task list
