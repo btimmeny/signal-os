@@ -43,6 +43,7 @@ from app.models import (
     StrategicTheme,
     ThemeStatus,
 )
+from app.services.commitments import _person_str, _due_str
 
 log = logging.getLogger(__name__)
 
@@ -950,6 +951,283 @@ def format_memo_markdown(memo: LeadershipMemo) -> str:
     return "\n".join(lines)
 
 
+def format_executive_memo(db: Session) -> str:
+    """Generate a leadership weekly memo optimized for executive communication.
+
+    Structure (exactly two sections):
+      1. Top Priorities — 3-5 most important items with owners and dates
+      2. Initiative Sections — each initiative broken into ordered steps
+         with progress items under each step
+
+    Data sources:
+      - Priority items from commitments with priority_order set
+      - Initiatives from the execution initiatives (theme_id IS NULL)
+      - Steps from sequence_order on commitments
+      - Architecture group context from InitiativeCommitmentLink join table
+      - Fallback to themed initiatives for tasks not in execution initiatives
+    """
+    # -----------------------------------------------------------------------
+    # Load all data upfront
+    # -----------------------------------------------------------------------
+    all_open = (
+        db.query(Commitment)
+        .filter(Commitment.status != CommitmentStatus.CLOSED)
+        .all()
+    )
+    if not all_open:
+        return "\U0001f3af Top Priorities\n\nNo open tasks this week."
+
+    all_by_id = {str(c.id): c for c in all_open}
+
+    active_initiatives = (
+        db.query(Initiative)
+        .filter(Initiative.status == InitiativeStatus.ACTIVE)
+        .order_by(Initiative.created_at.asc())
+        .all()
+    )
+    init_map = {str(i.id): i for i in active_initiatives}
+
+    # Execution initiatives = those without a theme (the 5 ordered ones)
+    exec_initiatives = [i for i in active_initiatives if i.theme_id is None]
+    # Architecture/themed initiatives
+    themed_initiatives = [i for i in active_initiatives if i.theme_id is not None]
+
+    # Load architecture links for context labels
+    all_links = (
+        db.query(InitiativeCommitmentLink)
+        .filter(InitiativeCommitmentLink.commitment_id.in_([c.id for c in all_open]))
+        .all()
+    )
+    arch_links: dict[str, list[str]] = {}  # commitment_id -> [initiative_title, ...]
+    for link in all_links:
+        cid = str(link.commitment_id)
+        iid = str(link.initiative_id)
+        init_obj = init_map.get(iid)
+        if init_obj:
+            if cid not in arch_links:
+                arch_links[cid] = []
+            arch_links[cid].append(init_obj.title)
+
+    # Recently closed (last 7 days) for progress signals
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+    recently_closed = (
+        db.query(Commitment)
+        .filter(
+            Commitment.status == CommitmentStatus.CLOSED,
+            Commitment.closed_at >= week_ago,
+        )
+        .order_by(Commitment.closed_at.desc())
+        .all()
+    )
+
+    # -----------------------------------------------------------------------
+    # Helper: format owner string
+    # -----------------------------------------------------------------------
+    def _owners_date(c: Commitment) -> str:
+        """Return '(Owners | Date)' suffix."""
+        owners = _person_str(c)
+        due = _due_str(c)
+        return f"({owners} | {due})"
+
+    # -----------------------------------------------------------------------
+    # Section 1: Top Priorities (3-5 items)
+    # -----------------------------------------------------------------------
+    priority_tasks = sorted(
+        [c for c in all_open if c.priority_order is not None],
+        key=lambda c: c.priority_order or 9999,
+    )[:5]
+
+    # If fewer than 3 from priority_order, pad with due-soon items
+    if len(priority_tasks) < 3:
+        used_ids = {str(c.id) for c in priority_tasks}
+        due_candidates = sorted(
+            [c for c in all_open if c.due_at and str(c.id) not in used_ids],
+            key=lambda c: c.due_at if c.due_at.tzinfo else c.due_at.replace(tzinfo=timezone.utc),
+        )
+        for c in due_candidates:
+            if len(priority_tasks) >= 5:
+                break
+            priority_tasks.append(c)
+
+    lines: list[str] = ["\U0001f3af Top Priorities"]
+    for i, c in enumerate(priority_tasks, 1):
+        lines.append(f"{i}. {c.title} {_owners_date(c)}")
+    lines.append("")
+
+    # -----------------------------------------------------------------------
+    # Section 2: Initiative Sections with step-based structure
+    # -----------------------------------------------------------------------
+    # Build initiative -> step -> tasks mapping for execution initiatives
+    used_task_ids: set[str] = set()
+
+    for init in exec_initiatives:
+        iid = str(init.id)
+
+        # Gather all open tasks assigned to this initiative
+        init_tasks = [
+            c for c in all_open
+            if c.initiative_id is not None and str(c.initiative_id) == iid
+        ]
+
+        # Also include recently closed tasks for this initiative (progress signals)
+        init_closed = [
+            c for c in recently_closed
+            if c.initiative_id is not None and str(c.initiative_id) == iid
+        ]
+
+        if not init_tasks and not init_closed:
+            continue
+
+        # Group by step (sequence_order)
+        steps: dict[int, list[Commitment]] = {}
+        no_step: list[Commitment] = []
+
+        for c in init_tasks:
+            used_task_ids.add(str(c.id))
+            if c.sequence_order is not None:
+                step_num = c.sequence_order
+                if step_num not in steps:
+                    steps[step_num] = []
+                steps[step_num].append(c)
+            else:
+                no_step.append(c)
+
+        # Add recently closed with step info
+        closed_steps: dict[int, list[Commitment]] = {}
+        for c in init_closed:
+            if c.sequence_order is not None:
+                step_num = c.sequence_order
+                if step_num not in closed_steps:
+                    closed_steps[step_num] = []
+                closed_steps[step_num].append(c)
+
+        # Determine step names from task context
+        # Use the first task title in each step as a hint for step naming
+        all_step_nums = sorted(set(list(steps.keys()) + list(closed_steps.keys())))
+
+        if not all_step_nums and not no_step:
+            continue
+
+        lines.append(f"{init.title}")
+        lines.append("")
+
+        for step_num in all_step_nums:
+            # Infer step name from the tasks in this step
+            step_tasks = steps.get(step_num, [])
+            step_closed = closed_steps.get(step_num, [])
+            all_step_tasks = step_tasks + step_closed
+
+            # Use initiative context + step number for step name
+            step_name = _infer_step_name(all_step_tasks, step_num)
+            lines.append(f"Step {step_num}: {step_name}")
+
+            # Show completed items first (progress signal)
+            for c in step_closed:
+                lines.append(f"\u2022 \u2705 {c.title} {_owners_date(c)}")
+
+            # Then in-progress items
+            for c in step_tasks:
+                lines.append(f"\u2022 {c.title} {_owners_date(c)}")
+
+            lines.append("")
+
+        # Tasks without step assignment
+        if no_step:
+            for c in no_step:
+                lines.append(f"\u2022 {c.title} {_owners_date(c)}")
+            lines.append("")
+
+    # -----------------------------------------------------------------------
+    # Include themed initiative tasks that aren't in execution initiatives
+    # -----------------------------------------------------------------------
+    # Group remaining tasks by their themed initiative
+    themed_tasks: dict[str, list[Commitment]] = {}
+    for c in all_open:
+        cid = str(c.id)
+        if cid in used_task_ids:
+            continue
+        # Check if task has an initiative_id pointing to a themed initiative
+        if c.initiative_id:
+            iid = str(c.initiative_id)
+            init_obj = init_map.get(iid)
+            if init_obj and init_obj.theme_id is not None:
+                if iid not in themed_tasks:
+                    themed_tasks[iid] = []
+                themed_tasks[iid].append(c)
+                used_task_ids.add(cid)
+                continue
+        # Check join table links
+        linked_names = arch_links.get(cid, [])
+        if linked_names:
+            # Find the first themed initiative this task links to
+            for link in all_links:
+                if str(link.commitment_id) == cid:
+                    link_iid = str(link.initiative_id)
+                    link_init = init_map.get(link_iid)
+                    if link_init and link_init.theme_id is not None:
+                        if link_iid not in themed_tasks:
+                            themed_tasks[link_iid] = []
+                        themed_tasks[link_iid].append(c)
+                        used_task_ids.add(cid)
+                        break
+
+    # Render themed initiative groups (without step structure)
+    for iid, tasks in themed_tasks.items():
+        init_obj = init_map.get(iid)
+        if not init_obj or not tasks:
+            continue
+        lines.append(f"{init_obj.title}")
+        lines.append("")
+        for c in sorted(tasks, key=lambda c: (c.sequence_order or 9999, (c.title or "").lower())):
+            lines.append(f"\u2022 {c.title} {_owners_date(c)}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+def _infer_step_name(tasks: list[Commitment], step_num: int) -> str:
+    """Infer a meaningful step name from the tasks in this step.
+
+    Uses keywords from task titles to generate a short phase description.
+    Falls back to a generic name based on step number.
+    """
+    if not tasks:
+        return f"Phase {step_num}"
+
+    # Look at all task titles for common patterns
+    titles = [t.title.lower() for t in tasks]
+    combined = " ".join(titles)
+
+    # Common keyword patterns -> step names
+    patterns = [
+        (["define", "specification", "spec", "model", "schema"], "Definition & Standards"),
+        (["deploy", "rollout", "ship", "publish"], "Deployment & Rollout"),
+        (["pilot", "onboarding", "onboard", "cohort"], "Pilot & Onboarding"),
+        (["integrate", "integration", "connect", "expose"], "Integration"),
+        (["automate", "automation", "1-click"], "Automation"),
+        (["review", "adversari", "audit"], "Review & Quality"),
+        (["knowledge", "data", "sync", "lake"], "Knowledge & Data"),
+        (["agent", "agentgraph", "swarm"], "Agent Infrastructure"),
+        (["evergreen", "iterate", "iteration"], "Evergreen Iteration"),
+        (["launch", "enable", "activate"], "Launch & Enablement"),
+        (["build", "create", "architect"], "Build & Architecture"),
+        (["track", "playbook", "template"], "Process & Templates"),
+        (["strategy", "roadmap", "plan"], "Strategy & Planning"),
+        (["environment", "access", "privilege"], "Environment & Access"),
+    ]
+
+    for keywords, name in patterns:
+        if any(kw in combined for kw in keywords):
+            return name
+
+    # Fallback: use first task title truncated
+    first_title = tasks[0].title
+    if len(first_title) > 40:
+        first_title = first_title[:37] + "..."
+    return first_title
+
+
 def format_memo_text(db: Session, memo_id: str) -> Optional[str]:
     """Render a memo as formatted text (delegates to format_memo_markdown)."""
     memo = db.query(LeadershipMemo).filter(LeadershipMemo.id == uuid.UUID(memo_id)).first()
@@ -1179,13 +1457,13 @@ def execute_memo_workflow(
 
 
 def get_or_generate_memo_text(db: Session, *, author: Optional[str] = None) -> str:
-    """Get the latest memo for this week, or generate one. Return formatted text.
+    """Return the executive leadership memo as pre-formatted text.
 
-    Used by the /memo slash command.  Also triggers file persistence and
-    conversion as a side-effect.
+    Used by the /memo slash command.  Generates a live executive memo
+    directly from current data (initiatives, steps, priorities) rather
+    than using the stored 5-section memo format.
     """
-    result = execute_memo_workflow(db, author=author, send_email=False)
-    return result["content"]
+    return format_executive_memo(db)
 
 
 # ---------------------------------------------------------------------------
