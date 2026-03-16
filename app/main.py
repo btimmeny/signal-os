@@ -129,54 +129,6 @@ def health(db: Session = Depends(get_db)):
     return {"ok": db_ok, "db": "connected" if db_ok else "unreachable"}
 
 
-@app.post("/email-test")
-def email_test():
-    """Send a test email via Resend and return diagnostics."""
-    import httpx
-
-    resend_key = os.environ.get("RESEND_API_KEY")
-    from_addr = os.environ.get("RESEND_FROM", "Signal OS <onboarding@resend.dev>")
-    recipient = os.environ.get(
-        "FRIDAY_UPDATE_RECIPIENT",
-        os.environ.get("GMAIL_USER", ""),
-    )
-
-    diag = {
-        "resend_key_set": bool(resend_key),
-        "resend_key_prefix": resend_key[:8] + "..." if resend_key else None,
-        "from": from_addr,
-        "recipient": recipient,
-        "recipient_source": "FRIDAY_UPDATE_RECIPIENT" if os.environ.get("FRIDAY_UPDATE_RECIPIENT") else ("GMAIL_USER" if os.environ.get("GMAIL_USER") else "none"),
-    }
-
-    if not resend_key:
-        diag["error"] = "RESEND_API_KEY not set"
-        return diag
-    if not recipient:
-        diag["error"] = "No recipient configured"
-        return diag
-
-    try:
-        resp = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {resend_key}"},
-            json={
-                "from": from_addr,
-                "to": [recipient],
-                "subject": "Signal OS — Email Diagnostic Test",
-                "text": "This is a diagnostic test email from Signal OS via Resend.",
-            },
-            timeout=30,
-        )
-        diag["resend_status"] = resp.status_code
-        diag["resend_response"] = resp.json() if resp.status_code in (200, 201) else resp.text
-        diag["success"] = resp.status_code in (200, 201)
-    except Exception as e:
-        diag["error"] = str(e)
-        diag["success"] = False
-
-    return diag
-
 
 # ---------------------------------------------------------------------------
 # Commitments
