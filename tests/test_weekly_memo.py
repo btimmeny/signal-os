@@ -666,23 +666,22 @@ def test_export_finalized_memo(client):
 # ---------------------------------------------------------------------------
 
 def test_memo_slash_command_auto_generates(client):
-    """/memo should auto-generate a memo if none exists for the current week."""
+    """/memo should auto-generate an executive memo from live data."""
     r = client.get("/memo", headers=HEADERS)
     assert r.status_code == 200
-    assert "# AI Platform Weekly Leadership Memo" in r.text
-    assert "## Strategic Direction" in r.text
+    assert "\U0001f3af Top Priorities" in r.text
 
 
 def test_memo_slash_command_returns_existing(client):
-    """/memo should return the existing memo if one was already generated."""
-    # Generate a memo first
+    """/memo always returns a live executive memo (not stored memo)."""
+    # Generate a stored memo first
     r1 = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
     assert r1.status_code == 200
 
-    # /memo should return the same memo, not create a new one
+    # /memo returns the live executive format, not the stored 5-section format
     r2 = client.get("/memo", headers=HEADERS)
     assert r2.status_code == 200
-    assert "**From:** Brian" in r2.text
+    assert "\U0001f3af Top Priorities" in r2.text
 
 
 def test_memo_slash_command_requires_auth(client):
