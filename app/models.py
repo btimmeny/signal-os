@@ -155,6 +155,15 @@ class Commitment(Base):
         lazy="select",
     )
 
+    # Strategic signal fields (Feature 021)
+    strategic_contribution_note = Column(Text, nullable=True)
+    execution_impact_note = Column(Text, nullable=True)
+
+    strategic_signals = relationship(
+        "StrategicSignal", back_populates="commitment", cascade="all, delete-orphan",
+        lazy="select",
+    )
+
     def __repr__(self) -> str:
         return f"<Commitment {self.id} title={self.title!r} status={self.status}>"
 
@@ -566,6 +575,63 @@ class LeadershipMemo(Base):
 # ---------------------------------------------------------------------------
 # Weekly Strategy Update (Feature 020 — Friday Execution Update)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Strategic Signal (Feature 021 — Task Strategic Signal System)
+# ---------------------------------------------------------------------------
+
+class SignalEventType(str, enum.Enum):
+    OPENED = "OPENED"
+    CLOSED = "CLOSED"
+
+
+class StrategicSignal(Base):
+    __tablename__ = "strategic_signals"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    commitment_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    initiative_id = Column(
+        Uuid,
+        ForeignKey("initiatives.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    theme_id = Column(
+        Uuid,
+        ForeignKey("strategic_themes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    event_type = Column(
+        String(32),
+        nullable=False,
+    )  # OPENED or CLOSED
+    strategic_contribution = Column(Text, nullable=True)
+    execution_impact = Column(Text, nullable=True)
+    is_high_signal = Column(Integer, nullable=False, default=0)
+    signal_category = Column(String(128), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    commitment = relationship("Commitment", back_populates="strategic_signals")
+    initiative = relationship("Initiative")
+    theme = relationship("StrategicTheme")
+
+    def __repr__(self) -> str:
+        return f"<StrategicSignal {self.id} event={self.event_type} commitment={self.commitment_id}>"
+
 
 class WeeklyStrategyUpdate(Base):
     __tablename__ = "weekly_strategy_updates"

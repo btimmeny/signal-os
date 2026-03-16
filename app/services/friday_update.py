@@ -881,6 +881,32 @@ def generate_friday_update(
     # 1. Extract signals
     signals = extract_signals(db, now=now)
 
+    # 1b. Enrich with strategic signal data (Feature 021)
+    try:
+        from app.services import strategic_signals as signal_svc
+        strategic_agg = signal_svc.aggregate_weekly_signals(db, now=now)
+        signals["strategic_signals"] = {
+            "high_signal_count": strategic_agg["high_signal_count"],
+            "closure_count": strategic_agg["closure_count"],
+            "open_count": strategic_agg["open_count"],
+            "by_initiative": {
+                k: len(v) for k, v in strategic_agg["by_initiative"].items()
+            },
+            "by_theme": {
+                k: len(v) for k, v in strategic_agg["by_theme"].items()
+            },
+            "initiative_names": strategic_agg["initiative_names"],
+            "theme_names": strategic_agg["theme_names"],
+            "high_signal_titles": [
+                s.commitment.title if s.commitment else "Unknown"
+                for s in strategic_agg["high_signal_closures"][:5]
+            ],
+            "unclear_count": len(strategic_agg["unclear_signals"]),
+        }
+        signals["signal_summary_text"] = signal_svc.format_signal_summary(strategic_agg)
+    except Exception:
+        log.warning("Could not enrich with strategic signals", exc_info=True)
+
     # 2. Find previous update
     previous_update = (
         db.query(WeeklyStrategyUpdate)

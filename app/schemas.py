@@ -104,6 +104,8 @@ class CommitmentResponse(BaseModel):
     due_at: Optional[datetime] = None
     last_touched_at: datetime
     days_open: float = 0.0
+    strategic_contribution_note: Optional[str] = None
+    execution_impact_note: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -135,6 +137,8 @@ class CommitmentResponse(BaseModel):
             due_at=obj.due_at,
             last_touched_at=obj.last_touched_at,
             days_open=round(delta, 2),
+            strategic_contribution_note=obj.strategic_contribution_note if hasattr(obj, 'strategic_contribution_note') else None,
+            execution_impact_note=obj.execution_impact_note if hasattr(obj, 'execution_impact_note') else None,
         )
 
 
@@ -658,6 +662,56 @@ class MemoResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Friday Strategy Update schemas (Feature 020)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Strategic Signal schemas (Feature 021)
+# ---------------------------------------------------------------------------
+
+class StrategicSignalResponse(BaseModel):
+    id: str
+    commitment_id: str
+    commitment_title: Optional[str] = None
+    initiative_id: Optional[str] = None
+    initiative_title: Optional[str] = None
+    theme_id: Optional[str] = None
+    theme_title: Optional[str] = None
+    event_type: str
+    strategic_contribution: Optional[str] = None
+    execution_impact: Optional[str] = None
+    is_high_signal: bool = False
+    signal_category: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "StrategicSignalResponse":
+        return cls(
+            id=str(obj.id),
+            commitment_id=str(obj.commitment_id),
+            commitment_title=obj.commitment.title if obj.commitment else None,
+            initiative_id=str(obj.initiative_id) if obj.initiative_id else None,
+            initiative_title=obj.initiative.title if obj.initiative else None,
+            theme_id=str(obj.theme_id) if obj.theme_id else None,
+            theme_title=obj.theme.title if obj.theme else None,
+            event_type=obj.event_type,
+            strategic_contribution=obj.strategic_contribution,
+            execution_impact=obj.execution_impact,
+            is_high_signal=bool(obj.is_high_signal),
+            signal_category=obj.signal_category,
+            created_at=obj.created_at,
+        )
+
+
+class SignalSummaryResponse(BaseModel):
+    signal_count: int = 0
+    high_signal_count: int = 0
+    closure_count: int = 0
+    open_count: int = 0
+    high_signal_closures: list[StrategicSignalResponse] = []
+    unclear_signals: list[StrategicSignalResponse] = []
+    summary_text: str = ""
+
 
 class UpdateStatus(str, Enum):
     DRAFT = "DRAFT"
