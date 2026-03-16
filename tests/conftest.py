@@ -18,7 +18,8 @@ from app.models import (  # noqa: E402, F401 — register models
     ObjectiveUpdate, PlatformLead, Reminder, StatusReport,
     StrategicContributionNote, StrategicNarrative, StrategicObjective,
     StrategicSignal, StrategicTheme, StrategyConfidenceHistory,
-    WeeklyNarrative, WeeklyStrategyUpdate,
+    StrategyDebriefRecord, WeeklyNarrative, WeeklyReviewSession,
+    WeeklyStrategyUpdate,
 )
 from app.main import app  # noqa: E402
 

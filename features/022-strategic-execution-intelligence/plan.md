@@ -44,9 +44,27 @@ Build a system that automatically converts task activity into strategic insight 
 - Feature 021 (Strategic Signal System) — for signal classification
 - APScheduler — for scheduled execution
 
+### Step 6: ChatGPT Review Sessions (Section 6)
+- Create migration 017 with weekly_review_sessions and strategy_debrief_records tables
+- Add WeeklyReviewSession and StrategyDebriefRecord models
+- Idempotent session creation (one per week)
+- Session initialization data payload for ChatGPT preloading
+- Review session section in email composition
+- 10 new API endpoints for session and debrief management
+
+### Step 7: Strategy Debrief (Section 7)
+- Default 4 high-leverage debrief questions
+- Debrief record CRUD with idempotent seeding
+- Response and derived insight storage
+- Integration into Friday update pipeline
+- 43 new comprehensive tests
+
 ## Key Design Decisions
 - All strategic commentary persisted in dedicated tables (not session memory)
 - Idempotency enforced via query-before-insert pattern
 - Three narrative framings per week for leadership flexibility
 - Confidence score uses weighted components (40/25/20 + friction penalty)
 - Trend direction uses ±5 threshold for meaningful change detection
+- Review sessions are idempotent per week (one session per week_date)
+- Debrief responses stored in DB, not session memory (durable memory)
+- Email composition conditionally includes review session section

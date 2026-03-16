@@ -764,6 +764,47 @@ class WeeklyNarrative(Base):
         return f"<WeeklyNarrative {self.id} type={self.narrative_type} week={self.week_date}>"
 
 
+class ReviewSessionStatus(str, enum.Enum):
+    OPEN = "open"
+    FINALIZED = "finalized"
+
+
+class WeeklyReviewSession(Base):
+    __tablename__ = "weekly_review_sessions"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    week_date = Column(DateTime(timezone=True), nullable=False, index=True)
+    session_title = Column(String(512), nullable=False)
+    chatgpt_session_link = Column(String(2048), nullable=True)
+    status = Column(String(32), nullable=False, default="open")
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WeeklyReviewSession {self.id} week={self.week_date} status={self.status}>"
+
+
+class StrategyDebriefRecord(Base):
+    __tablename__ = "strategy_debrief_records"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    week_date = Column(DateTime(timezone=True), nullable=False, index=True)
+    question = Column(Text, nullable=False)
+    response = Column(Text, nullable=True)
+    derived_insight = Column(Text, nullable=True)
+    recorded_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<StrategyDebriefRecord {self.id} week={self.week_date}>"
+
+
 class WeeklyStrategyUpdate(Base):
     __tablename__ = "weekly_strategy_updates"
 

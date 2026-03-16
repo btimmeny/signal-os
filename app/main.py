@@ -25,9 +25,15 @@ from app.schemas import (
     ConfidenceHistoryResponse,
     ContributionNoteConfirmRequest,
     ContributionNoteResponse,
+    DebriefRecordCreateRequest,
+    DebriefRecordResponse,
+    DebriefRecordUpdateRequest,
     FridayUpdateResponse,
     ImpactNoteResponse,
     IntelligenceUpdateResponse,
+    ReviewSessionCreateRequest,
+    ReviewSessionResponse,
+    ReviewSessionUpdateRequest,
     SignalSummaryResponse,
     StrategicNarrativeResponse,
     StrategicSignalResponse,
@@ -1155,6 +1161,121 @@ def intelligence_recommended_narrative(db: Session = Depends(get_db)):
     if not narrative:
         raise HTTPException(status_code=404, detail="No recommended narrative found")
     return WeeklyNarrativeResponse.from_orm_row(narrative)
+
+
+# ---------------------------------------------------------------------------
+# Review Sessions & Strategy Debrief (Feature 022 extension)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/intelligence/review-sessions", response_model=ReviewSessionResponse)
+def intelligence_create_review_session(
+    body: ReviewSessionCreateRequest,
+    db: Session = Depends(get_db),
+):
+    """Create or retrieve the review session for this week."""
+    from app.services.strategic_intelligence import _week_start, _ensure_review_session
+    week_date = _week_start()
+    session = _ensure_review_session(
+        db, week_date, chatgpt_session_link=body.chatgpt_session_link,
+    )
+    return ReviewSessionResponse.from_orm_row(session)
+
+
+@app.get("/intelligence/review-sessions", response_model=list[ReviewSessionResponse])
+def intelligence_list_review_sessions(
+    db: Session = Depends(get_db),
+    limit: int = Query(12, ge=1, le=52),
+):
+    """List recent weekly review sessions."""
+    rows = intel_svc.list_review_sessions(db, limit=limit)
+    return [ReviewSessionResponse.from_orm_row(s) for s in rows]
+
+
+@app.get("/intelligence/review-sessions/current", response_model=ReviewSessionResponse)
+def intelligence_current_review_session(db: Session = Depends(get_db)):
+    """Get the review session for the current week."""
+    session = intel_svc.get_review_session(db)
+    if not session:
+        raise HTTPException(status_code=404, detail="No review session for this week")
+    return ReviewSessionResponse.from_orm_row(session)
+
+
+@app.patch("/intelligence/review-sessions/{session_id}", response_model=ReviewSessionResponse)
+def intelligence_update_review_session(
+    session_id: str,
+    body: ReviewSessionUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """Update a review session (set link or change status)."""
+    session = intel_svc.update_review_session(
+        db, session_id,
+        chatgpt_session_link=body.chatgpt_session_link,
+        status=body.status,
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Review session not found")
+    return ReviewSessionResponse.from_orm_row(session)
+
+
+@app.post("/intelligence/review-sessions/finalize", response_model=ReviewSessionResponse)
+def intelligence_finalize_review_session(db: Session = Depends(get_db)):
+    """Finalize the current week's review session."""
+    session = intel_svc.finalize_review_session(db)
+    if not session:
+        raise HTTPException(status_code=404, detail="No review session for this week")
+    return ReviewSessionResponse.from_orm_row(session)
+
+
+@app.get("/intelligence/review-sessions/init-data")
+def intelligence_review_session_init_data(db: Session = Depends(get_db)):
+    """Get the initialization data for preloading a ChatGPT review session."""
+    return intel_svc.get_review_session_initialization_data(db)
+
+
+@app.post("/intelligence/debrief", response_model=DebriefRecordResponse)
+def intelligence_create_debrief(
+    body: DebriefRecordCreateRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a strategy debrief record (question + optional response)."""
+    record = intel_svc.create_debrief_record(
+        db, body.question,
+        response=body.response,
+        derived_insight=body.derived_insight,
+    )
+    return DebriefRecordResponse.from_orm_row(record)
+
+
+@app.get("/intelligence/debrief", response_model=list[DebriefRecordResponse])
+def intelligence_list_debrief(db: Session = Depends(get_db)):
+    """Get all debrief records for the current week."""
+    rows = intel_svc.get_debrief_records(db)
+    return [DebriefRecordResponse.from_orm_row(r) for r in rows]
+
+
+@app.patch("/intelligence/debrief/{record_id}", response_model=DebriefRecordResponse)
+def intelligence_update_debrief(
+    record_id: str,
+    body: DebriefRecordUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """Update a debrief record with response and/or derived insight."""
+    record = intel_svc.update_debrief_record(
+        db, record_id,
+        response=body.response,
+        derived_insight=body.derived_insight,
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Debrief record not found")
+    return DebriefRecordResponse.from_orm_row(record)
+
+
+@app.post("/intelligence/debrief/seed", response_model=list[DebriefRecordResponse])
+def intelligence_seed_debrief(db: Session = Depends(get_db)):
+    """Seed the default strategy debrief questions for the current week."""
+    records = intel_svc.seed_debrief_questions(db)
+    return [DebriefRecordResponse.from_orm_row(r) for r in records]
 
 
 # ---------------------------------------------------------------------------

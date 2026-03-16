@@ -867,11 +867,76 @@ class WeeklyNarrativeResponse(BaseModel):
         )
 
 
+class ReviewSessionResponse(BaseModel):
+    id: str
+    week_date: datetime
+    session_title: str
+    chatgpt_session_link: Optional[str] = None
+    status: str = "open"
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ReviewSessionResponse":
+        return cls(
+            id=str(obj.id),
+            week_date=obj.week_date,
+            session_title=obj.session_title,
+            chatgpt_session_link=obj.chatgpt_session_link,
+            status=obj.status,
+            created_at=obj.created_at,
+        )
+
+
+class ReviewSessionCreateRequest(BaseModel):
+    chatgpt_session_link: Optional[str] = None
+
+
+class ReviewSessionUpdateRequest(BaseModel):
+    chatgpt_session_link: Optional[str] = None
+    status: Optional[str] = None
+
+
+class DebriefRecordResponse(BaseModel):
+    id: str
+    week_date: datetime
+    question: str
+    response: Optional[str] = None
+    derived_insight: Optional[str] = None
+    recorded_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "DebriefRecordResponse":
+        return cls(
+            id=str(obj.id),
+            week_date=obj.week_date,
+            question=obj.question,
+            response=obj.response,
+            derived_insight=obj.derived_insight,
+            recorded_at=obj.recorded_at,
+        )
+
+
+class DebriefRecordCreateRequest(BaseModel):
+    question: str
+    response: Optional[str] = None
+    derived_insight: Optional[str] = None
+
+
+class DebriefRecordUpdateRequest(BaseModel):
+    response: Optional[str] = None
+    derived_insight: Optional[str] = None
+
+
 class IntelligenceUpdateResponse(BaseModel):
     update: Optional[FridayUpdateResponse] = None
     strategic_narrative: Optional[StrategicNarrativeResponse] = None
     confidence_history: Optional[ConfidenceHistoryResponse] = None
     weekly_narratives: list[WeeklyNarrativeResponse] = []
+    review_session: Optional[ReviewSessionResponse] = None
 
 
 class UpdateStatus(str, Enum):

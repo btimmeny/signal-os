@@ -36,8 +36,10 @@ from app.models import (
     StrategicSignal,
     StrategicTheme,
     StrategyConfidenceHistory,
+    StrategyDebriefRecord,
     ThemeStatus,
     WeeklyNarrative,
+    WeeklyReviewSession,
     WeeklyStrategyUpdate,
 )
 
@@ -810,11 +812,15 @@ def generate_intelligence_update(
         len(weekly_narratives),
     )
 
+    # Step 6: Create or reuse ChatGPT review session
+    review_session = _ensure_review_session(db, week_date)
+
     return {
         "update": update,
         "strategic_narrative": narrative_record,
         "confidence_history": confidence_record,
         "weekly_narratives": weekly_narratives,
+        "review_session": review_session,
     }
 
 
@@ -850,6 +856,7 @@ def compose_intelligence_email(
     confidence_history: StrategyConfidenceHistory,
     weekly_narratives: list[WeeklyNarrative],
     strategic_narrative: StrategicNarrative,
+    review_session: Optional[WeeklyReviewSession] = None,
 ) -> str:
     """Compose the Feature 022 email with all sections.
 
@@ -859,7 +866,9 @@ def compose_intelligence_email(
     2. Recommended narrative
     3. Strategic continuity analysis
     4. Strategy Confidence Signal with trend
-    5. Forwardable version
+    5. ChatGPT Review Session link
+    6. Strategy Debrief opening prompt
+    7. Forwardable version
     """
     narratives_json = json.loads(update.narrative_options) if update.narrative_options else []
     score_components = json.loads(update.score_components) if update.score_components else {}
@@ -955,6 +964,29 @@ def compose_intelligence_email(
         f"Explanation: {confidence_history.confidence_explanation or 'N/A'}"
     )
     lines.append("")
+
+    # ChatGPT Review Session
+    if review_session:
+        lines.append("--- CHATGPT REVIEW SESSION ---")
+        lines.append("")
+        lines.append(f"Session: {review_session.session_title}")
+        lines.append(f"Status: {review_session.status}")
+        if review_session.chatgpt_session_link:
+            lines.append(f"Link: {review_session.chatgpt_session_link}")
+        lines.append("")
+        lines.append(
+            "Opening message: Below are the three narrative drafts for this "
+            "week's AI Platform leadership update along with the recommended "
+            "option. Let's refine this together."
+        )
+        lines.append("")
+        lines.append(
+            "Strategy Debrief — please answer the following before "
+            "finalizing the narrative:"
+        )
+        for q in DEFAULT_DEBRIEF_QUESTIONS:
+            lines.append(f"  • {q}")
+        lines.append("")
 
     # Forwardable Version
     lines.append(
@@ -1052,3 +1084,313 @@ def list_impact_notes(
         cutoff = now - timedelta(days=days_back)
         q = q.filter(ExecutionImpactNote.created_at >= cutoff)
     return q.order_by(ExecutionImpactNote.created_at.desc()).limit(limit).all()
+
+
+# ---------------------------------------------------------------------------
+# SECTION 11 — Weekly Review Sessions (ChatGPT review)
+# ---------------------------------------------------------------------------
+
+
+DEFAULT_DEBRIEF_QUESTIONS = [
+    "What progress this week most meaningfully advanced the platform objective?",
+    "Where do you believe we made less progress than expected?",
+    "Is there a signal that our strategy might need adjustment?",
+    "What should the team feel most momentum about right now?",
+]
+
+
+def _ensure_review_session(
+    db: Session,
+    week_date: datetime,
+    *,
+    chatgpt_session_link: Optional[str] = None,
+) -> WeeklyReviewSession:
+    """Create or return the existing review session for the given week.
+
+    Idempotency: only one session per week_date.
+    Session title: 'AI Platform Weekly Memo Review — YYYY-MM-DD'
+    """
+    existing = (
+        db.query(WeeklyReviewSession)
+        .filter(WeeklyReviewSession.week_date == week_date)
+        .first()
+    )
+    if existing:
+        logger.info("Review session already exists for %s — reusing", week_date)
+        return existing
+
+    date_str = week_date.strftime("%Y-%m-%d")
+    session_title = f"AI Platform Weekly Memo Review — {date_str}"
+
+    session = WeeklyReviewSession(
+        week_date=week_date,
+        session_title=session_title,
+        chatgpt_session_link=chatgpt_session_link,
+        status="open",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    logger.info("Created review session for %s: %s", week_date, session_title)
+    return session
+
+
+def get_review_session(
+    db: Session,
+    week_date: Optional[datetime] = None,
+) -> Optional[WeeklyReviewSession]:
+    """Get the review session for a given week."""
+    if week_date is None:
+        week_date = _week_start()
+    return (
+        db.query(WeeklyReviewSession)
+        .filter(WeeklyReviewSession.week_date == week_date)
+        .first()
+    )
+
+
+def list_review_sessions(
+    db: Session,
+    limit: int = 12,
+) -> list[WeeklyReviewSession]:
+    """List recent review sessions."""
+    return (
+        db.query(WeeklyReviewSession)
+        .order_by(WeeklyReviewSession.week_date.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def update_review_session(
+    db: Session,
+    session_id: str,
+    *,
+    chatgpt_session_link: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Optional[WeeklyReviewSession]:
+    """Update a review session (set link or finalize)."""
+    session = (
+        db.query(WeeklyReviewSession)
+        .filter(WeeklyReviewSession.id == uuid.UUID(session_id))
+        .first()
+    )
+    if not session:
+        return None
+
+    if chatgpt_session_link is not None:
+        session.chatgpt_session_link = chatgpt_session_link
+    if status is not None:
+        session.status = status
+
+    db.commit()
+    db.refresh(session)
+    logger.info("Updated review session %s (status=%s)", session_id, session.status)
+    return session
+
+
+def finalize_review_session(
+    db: Session,
+    week_date: Optional[datetime] = None,
+) -> Optional[WeeklyReviewSession]:
+    """Mark the review session for the given week as finalized."""
+    if week_date is None:
+        week_date = _week_start()
+    session = (
+        db.query(WeeklyReviewSession)
+        .filter(WeeklyReviewSession.week_date == week_date)
+        .first()
+    )
+    if not session:
+        return None
+
+    session.status = "finalized"
+    db.commit()
+    db.refresh(session)
+    logger.info("Finalized review session for %s", week_date)
+    return session
+
+
+def get_review_session_initialization_data(
+    db: Session,
+    week_date: Optional[datetime] = None,
+) -> dict:
+    """Build the data payload to preload into a ChatGPT review session.
+
+    Includes:
+    - strategic objective
+    - weekly execution signals
+    - Strategy Confidence Score
+    - three narrative drafts
+    - narrative explanations
+    - recommended narrative
+    - strategic continuity analysis
+    - debrief questions
+    """
+    if week_date is None:
+        week_date = _week_start()
+
+    narrative = get_strategic_narrative(db, week_date)
+    confidence = (
+        db.query(StrategyConfidenceHistory)
+        .filter(StrategyConfidenceHistory.date == week_date)
+        .first()
+    )
+    weekly_narrs = get_weekly_narratives(db, week_date)
+    recommended = get_recommended_narrative(db, week_date)
+
+    # Build narrative options from WeeklyNarrative records
+    narrative_options = []
+    for wn in weekly_narrs:
+        narrative_options.append({
+            "narrative_type": wn.narrative_type,
+            "strategic_objective": wn.strategic_objective,
+            "narrative_text": wn.narrative_text,
+            "recommended": bool(wn.recommended_flag),
+        })
+
+    return {
+        "strategic_objective": DEFAULT_STRATEGIC_OBJECTIVE,
+        "strategic_narrative": {
+            "narrative_summary": narrative.narrative_summary if narrative else None,
+            "momentum_signals": json.loads(narrative.momentum_signals) if narrative and narrative.momentum_signals else [],
+            "friction_signals": json.loads(narrative.friction_signals) if narrative and narrative.friction_signals else [],
+        } if narrative else None,
+        "confidence_score": {
+            "score": confidence.confidence_score if confidence else None,
+            "trend": confidence.trend_direction if confidence else None,
+            "explanation": confidence.confidence_explanation if confidence else None,
+            "band": confidence_band_label(confidence.confidence_score) if confidence else None,
+        } if confidence else None,
+        "narrative_options": narrative_options,
+        "recommended_narrative": {
+            "narrative_type": recommended.narrative_type,
+            "narrative_text": recommended.narrative_text,
+        } if recommended else None,
+        "debrief_questions": DEFAULT_DEBRIEF_QUESTIONS,
+        "opening_message": (
+            "Below are the three narrative drafts for this week's AI Platform "
+            "leadership update along with the recommended option. "
+            "Let's refine this together."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# SECTION 12 — Strategy Debrief Records
+# ---------------------------------------------------------------------------
+
+
+def create_debrief_record(
+    db: Session,
+    question: str,
+    *,
+    response: Optional[str] = None,
+    derived_insight: Optional[str] = None,
+    week_date: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> StrategyDebriefRecord:
+    """Create a Strategy Debrief record.
+
+    Idempotency: if a record with the same question already exists for the
+    week, update it rather than creating a duplicate.
+    """
+    now = now or datetime.now(timezone.utc)
+    if week_date is None:
+        week_date = _week_start(now)
+
+    existing = (
+        db.query(StrategyDebriefRecord)
+        .filter(
+            StrategyDebriefRecord.week_date == week_date,
+            StrategyDebriefRecord.question == question,
+        )
+        .first()
+    )
+    if existing:
+        if response is not None:
+            existing.response = response
+        if derived_insight is not None:
+            existing.derived_insight = derived_insight
+        db.commit()
+        db.refresh(existing)
+        logger.info("Updated debrief record for %s", week_date)
+        return existing
+
+    record = StrategyDebriefRecord(
+        week_date=week_date,
+        question=question,
+        response=response,
+        derived_insight=derived_insight,
+        recorded_at=now,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    logger.info("Created debrief record for %s: %s", week_date, question[:50])
+    return record
+
+
+def update_debrief_record(
+    db: Session,
+    record_id: str,
+    *,
+    response: Optional[str] = None,
+    derived_insight: Optional[str] = None,
+) -> Optional[StrategyDebriefRecord]:
+    """Update a debrief record with Brian's response and/or derived insight."""
+    record = (
+        db.query(StrategyDebriefRecord)
+        .filter(StrategyDebriefRecord.id == uuid.UUID(record_id))
+        .first()
+    )
+    if not record:
+        return None
+
+    if response is not None:
+        record.response = response
+    if derived_insight is not None:
+        record.derived_insight = derived_insight
+
+    db.commit()
+    db.refresh(record)
+    logger.info("Updated debrief record %s", record_id)
+    return record
+
+
+def get_debrief_records(
+    db: Session,
+    week_date: Optional[datetime] = None,
+) -> list[StrategyDebriefRecord]:
+    """Get all debrief records for a given week."""
+    if week_date is None:
+        week_date = _week_start()
+    return (
+        db.query(StrategyDebriefRecord)
+        .filter(StrategyDebriefRecord.week_date == week_date)
+        .order_by(StrategyDebriefRecord.recorded_at)
+        .all()
+    )
+
+
+def seed_debrief_questions(
+    db: Session,
+    week_date: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> list[StrategyDebriefRecord]:
+    """Seed the default debrief questions for the current week.
+
+    Idempotent — skips questions that already exist.
+    """
+    now = now or datetime.now(timezone.utc)
+    if week_date is None:
+        week_date = _week_start(now)
+
+    records = []
+    for question in DEFAULT_DEBRIEF_QUESTIONS:
+        record = create_debrief_record(
+            db, question, week_date=week_date, now=now,
+        )
+        records.append(record)
+    return records

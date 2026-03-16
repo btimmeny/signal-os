@@ -35,8 +35,10 @@ from app.models import (
     StrategicSignal,
     StrategicTheme,
     StrategyConfidenceHistory,
+    StrategyDebriefRecord,
     ThemeStatus,
     WeeklyNarrative,
+    WeeklyReviewSession,
     WeeklyStrategyUpdate,
 )
 from app.services import strategic_intelligence as intel_svc
@@ -1127,3 +1129,645 @@ class TestScheduler:
 
         result = intel_svc.setup_scheduler(_get_db)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# SECTION 11 — Weekly Review Sessions
+# ---------------------------------------------------------------------------
+
+
+class TestReviewSessions:
+    """Test ChatGPT review session creation and management."""
+
+    def test_create_review_session(self, db_session):
+        """Create a new review session for the current week."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)  # Friday
+        week_date = intel_svc._week_start(now)
+
+        session = intel_svc._ensure_review_session(db_session, week_date)
+
+        assert session is not None
+        # SQLite strips timezone info, so compare naive datetimes
+        assert session.week_date.replace(tzinfo=None) == week_date.replace(tzinfo=None)
+        assert "AI Platform Weekly Memo Review" in session.session_title
+        assert session.status == "open"
+        assert session.chatgpt_session_link is None
+
+    def test_review_session_idempotent(self, db_session):
+        """Creating session for same week returns the same record."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+
+        session1 = intel_svc._ensure_review_session(db_session, week_date)
+        session2 = intel_svc._ensure_review_session(db_session, week_date)
+
+        assert str(session1.id) == str(session2.id)
+        # Only one record in DB
+        count = db_session.query(WeeklyReviewSession).count()
+        assert count == 1
+
+    def test_review_session_with_link(self, db_session):
+        """Create session with a ChatGPT session link."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+
+        session = intel_svc._ensure_review_session(
+            db_session, week_date,
+            chatgpt_session_link="https://chatgpt.com/session/abc123",
+        )
+
+        assert session.chatgpt_session_link == "https://chatgpt.com/session/abc123"
+
+    def test_review_session_different_weeks(self, db_session):
+        """Different weeks create different sessions."""
+        week1 = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        week2 = datetime(2026, 3, 16, 0, 0, tzinfo=timezone.utc)
+
+        s1 = intel_svc._ensure_review_session(db_session, week1)
+        s2 = intel_svc._ensure_review_session(db_session, week2)
+
+        assert str(s1.id) != str(s2.id)
+        count = db_session.query(WeeklyReviewSession).count()
+        assert count == 2
+
+    def test_get_review_session(self, db_session):
+        """Get review session for a specific week."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+
+        intel_svc._ensure_review_session(db_session, week_date)
+        result = intel_svc.get_review_session(db_session, week_date)
+
+        assert result is not None
+        assert result.week_date.replace(tzinfo=None) == week_date.replace(tzinfo=None)
+
+    def test_get_review_session_not_found(self, db_session):
+        """Returns None when no session exists for the week."""
+        week_date = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        result = intel_svc.get_review_session(db_session, week_date)
+        assert result is None
+
+    def test_list_review_sessions(self, db_session):
+        """List recent review sessions."""
+        week1 = datetime(2026, 3, 2, 0, 0, tzinfo=timezone.utc)
+        week2 = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        week3 = datetime(2026, 3, 16, 0, 0, tzinfo=timezone.utc)
+
+        intel_svc._ensure_review_session(db_session, week1)
+        intel_svc._ensure_review_session(db_session, week2)
+        intel_svc._ensure_review_session(db_session, week3)
+
+        sessions = intel_svc.list_review_sessions(db_session, limit=10)
+        assert len(sessions) == 3
+        # Most recent first
+        assert sessions[0].week_date.replace(tzinfo=None) == week3.replace(tzinfo=None)
+
+    def test_update_review_session(self, db_session):
+        """Update a review session with link and status."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+        session = intel_svc._ensure_review_session(db_session, week_date)
+
+        updated = intel_svc.update_review_session(
+            db_session, str(session.id),
+            chatgpt_session_link="https://chatgpt.com/session/xyz",
+            status="finalized",
+        )
+
+        assert updated is not None
+        assert updated.chatgpt_session_link == "https://chatgpt.com/session/xyz"
+        assert updated.status == "finalized"
+
+    def test_update_review_session_not_found(self, db_session):
+        """Returns None when session doesn't exist."""
+        result = intel_svc.update_review_session(
+            db_session, str(uuid.uuid4()),
+            chatgpt_session_link="https://chatgpt.com/session/xyz",
+        )
+        assert result is None
+
+    def test_finalize_review_session(self, db_session):
+        """Finalize the review session for a week."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+        intel_svc._ensure_review_session(db_session, week_date)
+
+        result = intel_svc.finalize_review_session(db_session, week_date)
+
+        assert result is not None
+        assert result.status == "finalized"
+
+    def test_finalize_review_session_not_found(self, db_session):
+        """Returns None when no session to finalize."""
+        week_date = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        result = intel_svc.finalize_review_session(db_session, week_date)
+        assert result is None
+
+    def test_session_title_format(self, db_session):
+        """Session title matches required format."""
+        week_date = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        session = intel_svc._ensure_review_session(db_session, week_date)
+
+        assert session.session_title == "AI Platform Weekly Memo Review — 2026-03-09"
+
+
+# ---------------------------------------------------------------------------
+# SECTION 12 — Strategy Debrief Records
+# ---------------------------------------------------------------------------
+
+
+class TestStrategyDebrief:
+    """Test strategy debrief question/answer recording."""
+
+    def test_create_debrief_record(self, db_session):
+        """Create a debrief record with a question."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        record = intel_svc.create_debrief_record(
+            db_session,
+            "What progress this week most meaningfully advanced the platform objective?",
+            now=now,
+        )
+
+        assert record is not None
+        assert record.question == "What progress this week most meaningfully advanced the platform objective?"
+        assert record.response is None
+        assert record.derived_insight is None
+
+    def test_create_debrief_with_response(self, db_session):
+        """Create a debrief record with question and response."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        record = intel_svc.create_debrief_record(
+            db_session,
+            "Where do you believe we made less progress than expected?",
+            response="The knowledge layer pipeline stalled.",
+            derived_insight="Need to reprioritize knowledge layer resources.",
+            now=now,
+        )
+
+        assert record.response == "The knowledge layer pipeline stalled."
+        assert record.derived_insight == "Need to reprioritize knowledge layer resources."
+
+    def test_debrief_record_idempotent(self, db_session):
+        """Same question for same week updates rather than duplicates."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        question = "What should the team feel most momentum about right now?"
+
+        r1 = intel_svc.create_debrief_record(
+            db_session, question, now=now,
+        )
+        r2 = intel_svc.create_debrief_record(
+            db_session, question,
+            response="Agent deployment pipeline is working.",
+            now=now,
+        )
+
+        assert str(r1.id) == str(r2.id)
+        assert r2.response == "Agent deployment pipeline is working."
+        count = db_session.query(StrategyDebriefRecord).count()
+        assert count == 1
+
+    def test_update_debrief_record(self, db_session):
+        """Update a debrief record with Brian's response."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        record = intel_svc.create_debrief_record(
+            db_session, "Test question?", now=now,
+        )
+
+        updated = intel_svc.update_debrief_record(
+            db_session, str(record.id),
+            response="Updated response.",
+            derived_insight="Key insight derived.",
+        )
+
+        assert updated is not None
+        assert updated.response == "Updated response."
+        assert updated.derived_insight == "Key insight derived."
+
+    def test_update_debrief_record_not_found(self, db_session):
+        """Returns None when record doesn't exist."""
+        result = intel_svc.update_debrief_record(
+            db_session, str(uuid.uuid4()),
+            response="Not found",
+        )
+        assert result is None
+
+    def test_get_debrief_records(self, db_session):
+        """Get all debrief records for a given week."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+
+        intel_svc.create_debrief_record(
+            db_session, "Question 1?", now=now,
+        )
+        intel_svc.create_debrief_record(
+            db_session, "Question 2?", now=now,
+        )
+
+        records = intel_svc.get_debrief_records(db_session, week_date)
+        assert len(records) == 2
+
+    def test_debrief_records_ordered_by_recorded_at(self, db_session):
+        """Records returned in chronological order."""
+        t1 = datetime(2026, 3, 13, 10, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 3, 13, 11, 0, tzinfo=timezone.utc)
+
+        intel_svc.create_debrief_record(
+            db_session, "First question?", now=t1,
+        )
+        intel_svc.create_debrief_record(
+            db_session, "Second question?", now=t2,
+        )
+
+        week_date = intel_svc._week_start(t1)
+        records = intel_svc.get_debrief_records(db_session, week_date)
+
+        assert records[0].question == "First question?"
+        assert records[1].question == "Second question?"
+
+    def test_seed_debrief_questions(self, db_session):
+        """Seed the default 4 debrief questions for the week."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+
+        records = intel_svc.seed_debrief_questions(db_session, now=now)
+
+        assert len(records) == 4
+        questions = [r.question for r in records]
+        assert "What progress this week most meaningfully advanced the platform objective?" in questions
+        assert "Where do you believe we made less progress than expected?" in questions
+        assert "Is there a signal that our strategy might need adjustment?" in questions
+        assert "What should the team feel most momentum about right now?" in questions
+
+    def test_seed_debrief_idempotent(self, db_session):
+        """Seeding twice doesn't create duplicates."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+
+        r1 = intel_svc.seed_debrief_questions(db_session, now=now)
+        r2 = intel_svc.seed_debrief_questions(db_session, now=now)
+
+        assert len(r1) == 4
+        assert len(r2) == 4
+        count = db_session.query(StrategyDebriefRecord).count()
+        assert count == 4
+
+    def test_debrief_different_weeks(self, db_session):
+        """Different weeks have separate debrief records."""
+        t1 = datetime(2026, 3, 6, 12, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+
+        intel_svc.seed_debrief_questions(db_session, now=t1)
+        intel_svc.seed_debrief_questions(db_session, now=t2)
+
+        count = db_session.query(StrategyDebriefRecord).count()
+        assert count == 8  # 4 per week
+
+
+# ---------------------------------------------------------------------------
+# SECTION 13 — Review Session Initialization Data
+# ---------------------------------------------------------------------------
+
+
+class TestReviewSessionInitData:
+    """Test the initialization data payload for ChatGPT sessions."""
+
+    def test_init_data_structure(self, db_session):
+        """Initialization data has the expected keys."""
+        week_date = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        data = intel_svc.get_review_session_initialization_data(
+            db_session, week_date,
+        )
+
+        assert "strategic_objective" in data
+        assert "debrief_questions" in data
+        assert "opening_message" in data
+        assert "narrative_options" in data
+        assert "confidence_score" in data
+        assert "strategic_narrative" in data
+        assert "recommended_narrative" in data
+
+    def test_init_data_debrief_questions(self, db_session):
+        """Initialization data includes the default debrief questions."""
+        week_date = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        data = intel_svc.get_review_session_initialization_data(
+            db_session, week_date,
+        )
+
+        assert len(data["debrief_questions"]) == 4
+        assert "What progress this week" in data["debrief_questions"][0]
+
+    def test_init_data_opening_message(self, db_session):
+        """Opening message matches the spec."""
+        week_date = datetime(2026, 3, 9, 0, 0, tzinfo=timezone.utc)
+        data = intel_svc.get_review_session_initialization_data(
+            db_session, week_date,
+        )
+
+        assert "three narrative drafts" in data["opening_message"]
+        assert "Let's refine this together" in data["opening_message"]
+
+
+# ---------------------------------------------------------------------------
+# SECTION 14 — Email Composition with Review Session
+# ---------------------------------------------------------------------------
+
+
+class TestEmailWithReviewSession:
+    """Test email composition includes review session section."""
+
+    def _make_update_and_deps(self, db_session):
+        """Helper to create update + confidence + narrative + session."""
+        now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
+        week_date = intel_svc._week_start(now)
+
+        update = WeeklyStrategyUpdate(
+            id=uuid.uuid4(),
+            week_start_date=week_date,
+            narrative_options=json.dumps([
+                {
+                    "framing": "Execution Progress",
+                    "strategic_objective": "Drive AI platform adoption",
+                    "why": "Shows progress",
+                    "behavior": "Keep shipping",
+                    "body": "This week the team delivered..."
+                },
+            ]),
+            recommended_narrative=0,
+            narrative_continuity="Continuing to build",
+            confidence_score=72,
+            confidence_explanation="Strong execution signals",
+            forwardable_body="Team update: great week.",
+            score_components=json.dumps({"execution": 80, "momentum": 70, "alignment": 65, "friction": 30}),
+        )
+        db_session.add(update)
+
+        confidence = StrategyConfidenceHistory(
+            id=uuid.uuid4(),
+            date=week_date,
+            confidence_score=72,
+            previous_score=65,
+            trend_direction="improving",
+            confidence_explanation="Strong execution signals",
+        )
+        db_session.add(confidence)
+
+        narrative = StrategicNarrative(
+            id=uuid.uuid4(),
+            date=week_date,
+            narrative_summary="Momentum building across platform.",
+            strategic_objective="Drive AI platform adoption",
+        )
+        db_session.add(narrative)
+
+        session = intel_svc._ensure_review_session(
+            db_session, week_date,
+            chatgpt_session_link="https://chatgpt.com/session/test123",
+        )
+
+        db_session.commit()
+        return update, confidence, narrative, session
+
+    def test_email_includes_review_session_section(self, db_session):
+        """Email includes ChatGPT Review Session section."""
+        update, confidence, narrative, session = self._make_update_and_deps(db_session)
+
+        email = intel_svc.compose_intelligence_email(
+            update, confidence, [], narrative, review_session=session,
+        )
+
+        assert "--- CHATGPT REVIEW SESSION ---" in email
+        assert "AI Platform Weekly Memo Review" in email
+        assert "https://chatgpt.com/session/test123" in email
+
+    def test_email_includes_debrief_questions(self, db_session):
+        """Email includes debrief questions when review session present."""
+        update, confidence, narrative, session = self._make_update_and_deps(db_session)
+
+        email = intel_svc.compose_intelligence_email(
+            update, confidence, [], narrative, review_session=session,
+        )
+
+        assert "Strategy Debrief" in email
+        assert "What progress this week" in email
+        assert "less progress than expected" in email
+
+    def test_email_without_review_session(self, db_session):
+        """Email omits review session section when not provided."""
+        update, confidence, narrative, _ = self._make_update_and_deps(db_session)
+
+        email = intel_svc.compose_intelligence_email(
+            update, confidence, [], narrative,
+        )
+
+        assert "--- CHATGPT REVIEW SESSION ---" not in email
+
+
+# ---------------------------------------------------------------------------
+# SECTION 15 — Review Session & Debrief API Endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestReviewSessionEndpoints:
+    """Test API endpoints for review sessions and debrief."""
+
+    def test_post_create_review_session(self, client):
+        """POST /intelligence/review-sessions creates a session."""
+        resp = client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "AI Platform Weekly Memo Review" in data["session_title"]
+        assert data["status"] == "open"
+
+    def test_post_create_review_session_idempotent(self, client):
+        """POST same week returns same session."""
+        r1 = client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        r2 = client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        assert r1.json()["id"] == r2.json()["id"]
+
+    def test_get_list_review_sessions(self, client):
+        """GET /intelligence/review-sessions lists sessions."""
+        # Create one first
+        client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        resp = client.get(
+            "/intelligence/review-sessions",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+
+    def test_get_current_review_session(self, client):
+        """GET /intelligence/review-sessions/current returns current session."""
+        client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        resp = client.get(
+            "/intelligence/review-sessions/current",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "open"
+
+    def test_get_current_review_session_not_found(self, client):
+        """GET /intelligence/review-sessions/current returns 404 if none."""
+        resp = client.get(
+            "/intelligence/review-sessions/current",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_patch_update_review_session(self, client):
+        """PATCH /intelligence/review-sessions/{id} updates session."""
+        create_resp = client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        session_id = create_resp.json()["id"]
+
+        resp = client.patch(
+            f"/intelligence/review-sessions/{session_id}",
+            json={"chatgpt_session_link": "https://chatgpt.com/test", "status": "finalized"},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chatgpt_session_link"] == "https://chatgpt.com/test"
+        assert data["status"] == "finalized"
+
+    def test_post_finalize_review_session(self, client):
+        """POST /intelligence/review-sessions/finalize marks session finalized."""
+        client.post(
+            "/intelligence/review-sessions",
+            json={},
+            headers=HEADERS,
+        )
+        resp = client.post(
+            "/intelligence/review-sessions/finalize",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "finalized"
+
+    def test_get_init_data(self, client):
+        """GET /intelligence/review-sessions/init-data returns structured data."""
+        resp = client.get(
+            "/intelligence/review-sessions/init-data",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "strategic_objective" in data
+        assert "debrief_questions" in data
+        assert len(data["debrief_questions"]) == 4
+
+    def test_post_create_debrief(self, client):
+        """POST /intelligence/debrief creates a debrief record."""
+        resp = client.post(
+            "/intelligence/debrief",
+            json={"question": "What went well this week?"},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["question"] == "What went well this week?"
+        assert data["response"] is None
+
+    def test_post_create_debrief_with_response(self, client):
+        """POST /intelligence/debrief with response and insight."""
+        resp = client.post(
+            "/intelligence/debrief",
+            json={
+                "question": "What went well?",
+                "response": "Agent deployment pipeline is strong.",
+                "derived_insight": "Keep investing in agent infra.",
+            },
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["response"] == "Agent deployment pipeline is strong."
+        assert data["derived_insight"] == "Keep investing in agent infra."
+
+    def test_get_list_debrief(self, client):
+        """GET /intelligence/debrief lists records for current week."""
+        client.post(
+            "/intelligence/debrief",
+            json={"question": "Q1?"},
+            headers=HEADERS,
+        )
+        client.post(
+            "/intelligence/debrief",
+            json={"question": "Q2?"},
+            headers=HEADERS,
+        )
+        resp = client.get(
+            "/intelligence/debrief",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+    def test_patch_update_debrief(self, client):
+        """PATCH /intelligence/debrief/{id} updates response."""
+        create_resp = client.post(
+            "/intelligence/debrief",
+            json={"question": "Test?"},
+            headers=HEADERS,
+        )
+        record_id = create_resp.json()["id"]
+
+        resp = client.patch(
+            f"/intelligence/debrief/{record_id}",
+            json={"response": "My answer.", "derived_insight": "Key finding."},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["response"] == "My answer."
+        assert data["derived_insight"] == "Key finding."
+
+    def test_patch_update_debrief_not_found(self, client):
+        """PATCH /intelligence/debrief/{id} returns 404 for missing record."""
+        resp = client.patch(
+            f"/intelligence/debrief/{uuid.uuid4()}",
+            json={"response": "Not found"},
+            headers=HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_post_seed_debrief(self, client):
+        """POST /intelligence/debrief/seed seeds default questions."""
+        resp = client.post(
+            "/intelligence/debrief/seed",
+            headers=HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 4
+
+    def test_seed_debrief_idempotent(self, client):
+        """POST /intelligence/debrief/seed twice doesn't duplicate."""
+        client.post("/intelligence/debrief/seed", headers=HEADERS)
+        resp = client.post("/intelligence/debrief/seed", headers=HEADERS)
+        assert resp.status_code == 200
+        assert len(resp.json()) == 4
+
+        list_resp = client.get("/intelligence/debrief", headers=HEADERS)
+        assert len(list_resp.json()) == 4
