@@ -642,6 +642,12 @@ class MemoResponse(BaseModel):
                 return ", ".join(str(x) for x in val)
             return str(val)
 
+        def _filter_internal_keys(d):
+            """Remove internal keys (prefixed with _) from lead_updates dict."""
+            if not isinstance(d, dict):
+                return d
+            return {k: v for k, v in d.items() if not k.startswith("_")}
+
         return cls(
             id=str(obj.id),
             week_start_date=obj.week_start_date,
@@ -653,7 +659,7 @@ class MemoResponse(BaseModel):
             progress_summary=obj.progress_summary,
             focus_next_week=_parse_text_or_json(obj.focus_next_week, ""),
             success_criteria=_parse_text_or_json(obj.success_criteria, ""),
-            lead_updates=_parse_json(obj.lead_updates, {}),
+            lead_updates=_filter_internal_keys(_parse_json(obj.lead_updates, {})),
             dashboard_snapshot=_parse_json(obj.dashboard_snapshot, {}),
             audience=_parse_json(obj.audience, []),
         )

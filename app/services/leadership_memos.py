@@ -444,16 +444,12 @@ def _build_narrative_leadership_execution(
     )
     open_by_id = {str(c.id): c for c in all_open}
 
-    # Map commitments to initiatives
+    # Map commitments to initiatives (and their pillar)
     all_links = db.query(InitiativeCommitmentLink).all()
-    commitment_init: dict[str, str] = {}
-    for link in all_links:
-        cid = str(link.commitment_id)
-        iid = str(link.initiative_id)
-        if iid in init_map:
-            commitment_init[cid] = init_map[iid].title
+    commitment_init: dict[str, str] = {}  # commitment_id -> initiative title
+    commitment_pillar: dict[str, str] = {}  # commitment_id -> pillar name
 
-    # Map initiatives to pillars for "why it matters"
+    # Map initiatives to pillars
     init_pillar: dict[str, str] = {}
     for init in active_initiatives:
         title_lower = init.title.lower()
@@ -461,6 +457,14 @@ def _build_narrative_leadership_execution(
             if any(kw in title_lower for kw in pillar.lower().split()):
                 init_pillar[str(init.id)] = pillar
                 break
+
+    for link in all_links:
+        cid = str(link.commitment_id)
+        iid = str(link.initiative_id)
+        if iid in init_map:
+            commitment_init[cid] = init_map[iid].title
+            if iid in init_pillar:
+                commitment_pillar[cid] = init_pillar[iid]
 
     sections: list[str] = []
     assigned_commitment_ids: set[str] = set()
@@ -504,7 +508,14 @@ def _build_narrative_leadership_execution(
             cid = str(commitment.id)
             init_name = commitment_init.get(cid, "")
             # Generate "why it matters" based on initiative/pillar connection
-            if init_name:
+            pillar_name = commitment_pillar.get(cid, "")
+            if init_name and pillar_name:
+                why = (
+                    f"Advances the {init_name} initiative under the "
+                    f"{pillar_name} pillar, contributing to the platform's "
+                    f"strategic execution."
+                )
+            elif init_name:
                 why = (
                     f"Advances the {init_name} initiative, contributing to "
                     f"the platform's strategic execution."
