@@ -17,6 +17,7 @@ def create_initiative(
     description: Optional[str] = None,
     status: str = "ACTIVE",
     theme_id: Optional[str] = None,
+    owner: Optional[str] = None,
 ) -> Initiative:
     """Create a new initiative."""
     init = Initiative(
@@ -25,6 +26,7 @@ def create_initiative(
         description=description,
         status=InitiativeStatus(status),
         theme_id=uuid.UUID(theme_id) if theme_id else None,
+        owner=owner,
     )
     db.add(init)
     db.commit()

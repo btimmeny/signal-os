@@ -57,6 +57,14 @@ class CommitmentOpenRequest(BaseModel):
     source_snippet: Optional[str] = None
     priority_order: Optional[int] = Field(None, ge=1)
     status: CommitmentStatus = CommitmentStatus.OPEN
+    initiative_id: Optional[str] = None
+    program_id: Optional[str] = None
+    sequence_order: Optional[int] = None
+    depends_on_commitment_id: Optional[str] = None
+    blocked_by_commitment_id: Optional[str] = None
+    milestone_flag: Optional[int] = Field(0, ge=0, le=1)
+    completed_this_week: Optional[int] = Field(0, ge=0, le=1)
+    win_flag: Optional[int] = Field(0, ge=0, le=1)
 
 
 class CommitmentCloseRequest(BaseModel):
@@ -79,6 +87,14 @@ class CommitmentUpdateRequest(BaseModel):
     due_at: Optional[datetime] = None
     source_snippet: Optional[str] = None
     priority_order: Optional[int] = Field(None, ge=1)
+    initiative_id: Optional[str] = None
+    program_id: Optional[str] = None
+    sequence_order: Optional[int] = None
+    depends_on_commitment_id: Optional[str] = None
+    blocked_by_commitment_id: Optional[str] = None
+    milestone_flag: Optional[int] = Field(None, ge=0, le=1)
+    completed_this_week: Optional[int] = Field(None, ge=0, le=1)
+    win_flag: Optional[int] = Field(None, ge=0, le=1)
 
 
 class CommitmentSetPriorityRequest(BaseModel):
@@ -106,6 +122,14 @@ class CommitmentResponse(BaseModel):
     days_open: float = 0.0
     strategic_contribution_note: Optional[str] = None
     execution_impact_note: Optional[str] = None
+    initiative_id: Optional[str] = None
+    program_id: Optional[str] = None
+    sequence_order: Optional[int] = None
+    depends_on_commitment_id: Optional[str] = None
+    blocked_by_commitment_id: Optional[str] = None
+    milestone_flag: int = 0
+    completed_this_week: int = 0
+    win_flag: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -139,6 +163,14 @@ class CommitmentResponse(BaseModel):
             days_open=round(delta, 2),
             strategic_contribution_note=obj.strategic_contribution_note if hasattr(obj, 'strategic_contribution_note') else None,
             execution_impact_note=obj.execution_impact_note if hasattr(obj, 'execution_impact_note') else None,
+            initiative_id=str(obj.initiative_id) if hasattr(obj, 'initiative_id') and obj.initiative_id else None,
+            program_id=str(obj.program_id) if hasattr(obj, 'program_id') and obj.program_id else None,
+            sequence_order=obj.sequence_order if hasattr(obj, 'sequence_order') else None,
+            depends_on_commitment_id=str(obj.depends_on_commitment_id) if hasattr(obj, 'depends_on_commitment_id') and obj.depends_on_commitment_id else None,
+            blocked_by_commitment_id=str(obj.blocked_by_commitment_id) if hasattr(obj, 'blocked_by_commitment_id') and obj.blocked_by_commitment_id else None,
+            milestone_flag=obj.milestone_flag if hasattr(obj, 'milestone_flag') else 0,
+            completed_this_week=obj.completed_this_week if hasattr(obj, 'completed_this_week') else 0,
+            win_flag=obj.win_flag if hasattr(obj, 'win_flag') else 0,
         )
 
 
@@ -238,6 +270,7 @@ class InitiativeCreateRequest(BaseModel):
     description: Optional[str] = None
     status: InitiativeStatus = InitiativeStatus.ACTIVE
     theme_id: Optional[str] = None
+    owner: Optional[str] = None
 
 
 class InitiativeUpdateRequest(BaseModel):
@@ -246,6 +279,7 @@ class InitiativeUpdateRequest(BaseModel):
     description: Optional[str] = None
     status: Optional[InitiativeStatus] = None
     theme_id: Optional[str] = None
+    owner: Optional[str] = None
 
 
 class InitiativeResponse(BaseModel):
@@ -255,6 +289,7 @@ class InitiativeResponse(BaseModel):
     status: InitiativeStatus
     theme_id: Optional[str] = None
     theme_title: Optional[str] = None
+    owner: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -272,6 +307,7 @@ class InitiativeResponse(BaseModel):
             status=obj.status.value if hasattr(obj.status, "value") else obj.status,
             theme_id=str(obj.theme_id) if obj.theme_id else None,
             theme_title=theme_title,
+            owner=obj.owner,
             created_at=obj.created_at,
             updated_at=obj.updated_at,
         )
@@ -279,6 +315,59 @@ class InitiativeResponse(BaseModel):
 
 class InitiativeSeedRequest(BaseModel):
     titles: list[str] = Field(..., min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# Program schemas
+# ---------------------------------------------------------------------------
+
+class ProgramStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
+class ProgramCreateRequest(BaseModel):
+    initiative_id: str
+    title: str = Field(..., min_length=1, max_length=512)
+    description: Optional[str] = None
+    owner: Optional[str] = None
+    status: ProgramStatus = ProgramStatus.ACTIVE
+
+
+class ProgramUpdateRequest(BaseModel):
+    program_id: str
+    title: Optional[str] = Field(None, min_length=1, max_length=512)
+    description: Optional[str] = None
+    owner: Optional[str] = None
+    status: Optional[ProgramStatus] = None
+
+
+class ProgramResponse(BaseModel):
+    id: str
+    initiative_id: str
+    title: str
+    description: Optional[str] = None
+    owner: Optional[str] = None
+    status: ProgramStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ProgramResponse":
+        return cls(
+            id=str(obj.id),
+            initiative_id=str(obj.initiative_id),
+            title=obj.title,
+            description=obj.description,
+            owner=obj.owner,
+            status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            created_at=obj.created_at,
+            updated_at=obj.updated_at,
+        )
 
 
 class InitiativeLinkRequest(BaseModel):

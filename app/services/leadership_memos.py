@@ -38,6 +38,8 @@ from app.models import (
     LeadershipMemo,
     MemoStatus,
     PlatformLead,
+    Program,
+    ProgramStatus,
     StrategicTheme,
     ThemeStatus,
 )
@@ -208,11 +210,38 @@ def _build_narrative_strategic_direction(
 def _build_narrative_progress(db: Session, leads: list[PlatformLead]) -> str:
     """Build the *Progress This Week* section.
 
-    Highlights 1-3 meaningful milestones from completed work or significant
-    platform progress. Written in narrative form, focused on outcomes rather
-    than activities. Includes one major platform milestone.
+    Highlights wins (win_flag), milestones (milestone_flag), and tasks marked
+    completed_this_week first.  Falls back to recently closed commitments.
+    Written in narrative form, focused on outcomes rather than activities.
     """
-    # Recently closed commitments (completed work)
+    # 1. Wins flagged this week
+    wins = (
+        db.query(Commitment)
+        .filter(Commitment.win_flag == 1)
+        .order_by(Commitment.last_touched_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    # 2. Tasks explicitly marked completed this week
+    completed_this_week = (
+        db.query(Commitment)
+        .filter(Commitment.completed_this_week == 1)
+        .order_by(Commitment.last_touched_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    # 3. Milestones
+    milestone_tasks = (
+        db.query(Commitment)
+        .filter(Commitment.milestone_flag == 1)
+        .order_by(Commitment.last_touched_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    # 4. Recently closed commitments (fallback)
     recently_closed = (
         db.query(Commitment)
         .filter(Commitment.status == CommitmentStatus.CLOSED)
@@ -228,32 +257,96 @@ def _build_narrative_progress(db: Session, leads: list[PlatformLead]) -> str:
     )
     init_map = {str(i.id): i for i in active_initiatives}
 
-    # Build milestone narratives from completed work
-    milestones: list[str] = []
-    for commitment in recently_closed[:3]:
-        # Try to connect to an initiative/pillar
+    # Helper: resolve initiative name for a commitment
+    def _init_name_for(commitment: Commitment) -> Optional[str]:
+        # Direct initiative_id on commitment (new field)
+        if commitment.initiative_id:
+            init = init_map.get(str(commitment.initiative_id))
+            if init:
+                return init.title
+        # Fallback to link table
         links = (
             db.query(InitiativeCommitmentLink)
             .filter(InitiativeCommitmentLink.commitment_id == commitment.id)
             .all()
         )
-        init_name = None
         for link in links:
             init = init_map.get(str(link.initiative_id))
             if init:
-                init_name = init.title
-                break
+                return init.title
+        return None
 
-        if init_name:
-            milestones.append(
-                f"{commitment.title} was completed as part of the {init_name} "
-                f"initiative, advancing the platform's capabilities."
-            )
-        else:
-            milestones.append(
-                f"{commitment.title} was completed, contributing to overall "
-                f"platform execution progress."
-            )
+    # Helper: resolve program name for a commitment
+    def _program_name_for(commitment: Commitment) -> Optional[str]:
+        if commitment.program_id:
+            prog = db.query(Program).filter(Program.id == commitment.program_id).first()
+            if prog:
+                return prog.title
+        return None
+
+    # Build milestone narratives
+    milestones: list[str] = []
+    seen_ids: set[str] = set()
+
+    # Wins first
+    for c in wins:
+        cid = str(c.id)
+        if cid in seen_ids:
+            continue
+        seen_ids.add(cid)
+        iname = _init_name_for(c)
+        pname = _program_name_for(c)
+        context = ""
+        if iname and pname:
+            context = f" under {pname} ({iname})"
+        elif iname:
+            context = f" under the {iname} initiative"
+        milestones.append(
+            f"🏆 {c.title} was achieved{context}, marking a key win for the platform."
+        )
+
+    # Completed this week
+    for c in completed_this_week:
+        cid = str(c.id)
+        if cid in seen_ids:
+            continue
+        seen_ids.add(cid)
+        iname = _init_name_for(c)
+        context = f" ({iname})" if iname else ""
+        milestones.append(
+            f"{c.title} was completed this week{context}."
+        )
+
+    # Milestones
+    for c in milestone_tasks:
+        cid = str(c.id)
+        if cid in seen_ids:
+            continue
+        seen_ids.add(cid)
+        iname = _init_name_for(c)
+        context = f" for the {iname} initiative" if iname else ""
+        milestones.append(
+            f"📌 {c.title} reached a milestone{context}."
+        )
+
+    # Fallback to recently closed
+    if not milestones:
+        for commitment in recently_closed[:3]:
+            cid = str(commitment.id)
+            if cid in seen_ids:
+                continue
+            seen_ids.add(cid)
+            init_name = _init_name_for(commitment)
+            if init_name:
+                milestones.append(
+                    f"{commitment.title} was completed as part of the {init_name} "
+                    f"initiative, advancing the platform's capabilities."
+                )
+            else:
+                milestones.append(
+                    f"{commitment.title} was completed, contributing to overall "
+                    f"platform execution progress."
+                )
 
     if not milestones:
         # No recently closed items — describe active work momentum
@@ -548,7 +641,10 @@ def _build_narrative_leadership_execution(
 
 
 def _gather_dashboard_snapshot(db: Session) -> dict:
-    """Pull the current dashboard state for the memo snapshot."""
+    """Pull the current dashboard state for the memo snapshot.
+
+    Includes Initiative > Program > Task hierarchy from new execution fields.
+    """
     all_open = (
         db.query(Commitment)
         .filter(Commitment.status != CommitmentStatus.CLOSED)
@@ -559,8 +655,12 @@ def _gather_dashboard_snapshot(db: Session) -> dict:
     due_soon_cutoff = now + timedelta(days=7)
 
     top_focus: list[str] = []
+    needs_decision: list[str] = []
     due_soon: list[str] = []
-    active_workstreams: list[str] = []
+    active_workstreams: list[dict] = []
+    wins_this_week: list[str] = []
+
+    open_ids = {str(c.id) for c in all_open}
 
     for c in all_open:
         if c.priority_order is not None:
@@ -569,31 +669,80 @@ def _gather_dashboard_snapshot(db: Session) -> dict:
             due_at = c.due_at if c.due_at.tzinfo else c.due_at.replace(tzinfo=timezone.utc)
             if due_at <= due_soon_cutoff:
                 due_soon.append(f"{c.title} (due {c.due_at.strftime('%b %-d')})")
+        # Needs decision: WAITING or blocked (only if blocker is still open)
+        is_blocked = (
+            c.blocked_by_commitment_id is not None
+            and str(c.blocked_by_commitment_id) in open_ids
+        )
+        if (c.status == CommitmentStatus.WAITING) or is_blocked:
+            needs_decision.append(c.title)
 
+    # Wins this week
+    for c in db.query(Commitment).filter(Commitment.win_flag == 1).all():
+        wins_this_week.append(c.title)
+
+    # Build Initiative > Program > Task hierarchy
     active_initiatives = (
         db.query(Initiative)
         .filter(Initiative.status == InitiativeStatus.ACTIVE)
         .order_by(Initiative.created_at.asc())
         .all()
     )
+
     for init in active_initiatives:
-        task_count = (
-            db.query(InitiativeCommitmentLink)
+        programs = (
+            db.query(Program)
+            .filter(
+                Program.initiative_id == init.id,
+                Program.status == ProgramStatus.ACTIVE,
+            )
+            .order_by(Program.created_at.asc())
+            .all()
+        )
+
+        program_data: list[dict] = []
+        for prog in programs:
+            # Tasks directly linked to this program
+            prog_tasks = [
+                c for c in all_open if c.program_id == prog.id
+            ]
+            if prog_tasks:
+                program_data.append({
+                    "title": prog.title,
+                    "owner": prog.owner,
+                    "tasks": [t.title for t in prog_tasks],
+                })
+
+        # Count unique open tasks linked to this initiative (union of direct + join table)
+        direct_ids = {str(c.id) for c in all_open if c.initiative_id == init.id}
+        join_table_ids = {
+            str(link.commitment_id)
+            for link in db.query(InitiativeCommitmentLink)
             .join(Commitment, InitiativeCommitmentLink.commitment_id == Commitment.id)
             .filter(
                 InitiativeCommitmentLink.initiative_id == init.id,
                 Commitment.status != CommitmentStatus.CLOSED,
             )
-            .count()
-        )
-        if task_count > 0:
-            active_workstreams.append(f"{init.title} ({task_count} active tasks)")
+            .all()
+        }
+        total_tasks = len(direct_ids | join_table_ids)
+
+        if total_tasks > 0 or program_data:
+            ws: dict = {
+                "initiative": init.title,
+                "owner": init.owner,
+                "task_count": total_tasks,
+            }
+            if program_data:
+                ws["programs"] = program_data
+            active_workstreams.append(ws)
 
     return {
         "top_focus": top_focus,
-        "needs_decision": [],
+        "needs_decision": needs_decision,
         "due_soon": due_soon,
         "active_workstreams": active_workstreams,
+        "wins_this_week": wins_this_week,
     }
 
 
