@@ -942,6 +942,8 @@ def _export_docx_fallback(memo: LeadershipMemo) -> bytes:
     doc.add_paragraph(f"To: {', '.join(audience) if audience else 'Leadership Team'}")
     doc.add_paragraph(f"From: {memo.author or 'Leadership'}")
     doc.add_paragraph(f"Date: {memo.week_start_date.strftime('%B %-d, %Y')}")
+    status_val = memo.status.value if hasattr(memo.status, "value") else memo.status
+    doc.add_paragraph(f"Status: {status_val}")
 
     doc.add_heading("Strategic Objective", level=1)
     doc.add_paragraph(memo.strategic_objective or DEFAULT_STRATEGIC_OBJECTIVE)

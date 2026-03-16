@@ -653,3 +653,64 @@ class MemoResponse(BaseModel):
             dashboard_snapshot=_parse_json(obj.dashboard_snapshot, {}),
             audience=_parse_json(obj.audience, []),
         )
+
+
+# ---------------------------------------------------------------------------
+# Friday Strategy Update schemas (Feature 020)
+# ---------------------------------------------------------------------------
+
+class UpdateStatus(str, Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+
+
+class FridayUpdateResponse(BaseModel):
+    id: str
+    week_start_date: datetime
+    created_at: datetime
+    status: UpdateStatus
+
+    narrative_options: Optional[list[dict]] = None
+    recommended_narrative: Optional[int] = None
+
+    confidence_score: Optional[int] = None
+    confidence_trend: Optional[str] = None
+    confidence_explanation: Optional[str] = None
+    score_components: Optional[dict] = None
+
+    narrative_continuity: Optional[str] = None
+    forwardable_body: Optional[str] = None
+
+    email_body: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj, *, email_body: Optional[str] = None) -> "FridayUpdateResponse":
+        import json
+
+        def _parse_json(val, default=None):
+            if val is None:
+                return default
+            if isinstance(val, (list, dict)):
+                return val
+            try:
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                return default
+
+        return cls(
+            id=str(obj.id),
+            week_start_date=obj.week_start_date,
+            created_at=obj.created_at,
+            status=obj.status.value if hasattr(obj.status, "value") else obj.status,
+            narrative_options=_parse_json(obj.narrative_options, []),
+            recommended_narrative=obj.recommended_narrative,
+            confidence_score=obj.confidence_score,
+            confidence_trend=obj.confidence_trend,
+            confidence_explanation=obj.confidence_explanation,
+            score_components=_parse_json(obj.score_components, {}),
+            narrative_continuity=obj.narrative_continuity,
+            forwardable_body=obj.forwardable_body,
+            email_body=email_body,
+        )

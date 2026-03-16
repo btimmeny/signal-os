@@ -105,6 +105,7 @@ def seed_leads(
             name=name,
             role=lead_data.get("role", ""),
             focus_area=lead_data.get("focus_area", ""),
+            email=lead_data.get("email"),
             description=lead_data.get("description"),
             initiative_ids=json.dumps(lead_data["initiative_ids"]) if lead_data.get("initiative_ids") else None,
             active=1,
