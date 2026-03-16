@@ -504,6 +504,7 @@ class PlatformLeadCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
     role: str = Field(..., min_length=1, max_length=512)
     focus_area: str = Field(..., min_length=1, max_length=512)
+    email: Optional[str] = Field(None, max_length=512)
     description: Optional[str] = None
     initiative_ids: Optional[list[str]] = None
     active: bool = True
@@ -514,6 +515,7 @@ class PlatformLeadUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=256)
     role: Optional[str] = Field(None, min_length=1, max_length=512)
     focus_area: Optional[str] = Field(None, min_length=1, max_length=512)
+    email: Optional[str] = Field(None, max_length=512)
     description: Optional[str] = None
     initiative_ids: Optional[list[str]] = None
     active: Optional[bool] = None
@@ -524,6 +526,7 @@ class PlatformLeadResponse(BaseModel):
     name: str
     role: str
     focus_area: str
+    email: Optional[str] = None
     description: Optional[str] = None
     initiative_ids: Optional[list[str]] = None
     active: bool
@@ -545,6 +548,7 @@ class PlatformLeadResponse(BaseModel):
             name=obj.name,
             role=obj.role,
             focus_area=obj.focus_area,
+            email=obj.email,
             description=obj.description,
             initiative_ids=init_ids,
             active=bool(obj.active),
@@ -593,8 +597,8 @@ class MemoResponse(BaseModel):
     strategic_objective: Optional[str] = None
     current_priorities: Optional[list[str]] = None
     progress_summary: Optional[str] = None
-    focus_next_week: Optional[list[str]] = None
-    success_criteria: Optional[list[str]] = None
+    focus_next_week: Optional[str] = None  # narrative text
+    success_criteria: Optional[str] = None  # narrative text
 
     lead_updates: Optional[dict] = None
     dashboard_snapshot: Optional[dict] = None
@@ -616,6 +620,24 @@ class MemoResponse(BaseModel):
             except (json.JSONDecodeError, TypeError):
                 return default
 
+        def _parse_text_or_json(val, default=""):
+            """Parse a field that may be a JSON string or plain text."""
+            if val is None:
+                return default
+            if isinstance(val, str):
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, list):
+                        return ", ".join(str(x) for x in parsed)
+                    if isinstance(parsed, str):
+                        return parsed
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                return val
+            if isinstance(val, list):
+                return ", ".join(str(x) for x in val)
+            return str(val)
+
         return cls(
             id=str(obj.id),
             week_start_date=obj.week_start_date,
@@ -625,8 +647,8 @@ class MemoResponse(BaseModel):
             strategic_objective=obj.strategic_objective,
             current_priorities=_parse_json(obj.current_priorities, []),
             progress_summary=obj.progress_summary,
-            focus_next_week=_parse_json(obj.focus_next_week, []),
-            success_criteria=_parse_json(obj.success_criteria, []),
+            focus_next_week=_parse_text_or_json(obj.focus_next_week, ""),
+            success_criteria=_parse_text_or_json(obj.success_criteria, ""),
             lead_updates=_parse_json(obj.lead_updates, {}),
             dashboard_snapshot=_parse_json(obj.dashboard_snapshot, {}),
             audience=_parse_json(obj.audience, []),

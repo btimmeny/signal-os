@@ -317,7 +317,7 @@ def test_render_memo(client):
     assert r2.status_code == 200
     text = r2.text
     assert "AI Platform Weekly Leadership Memo" in text
-    assert "From: Brian" in text
+    assert "**From:** Brian" in text
     assert "Strategic Objective" in text
 
 
@@ -553,7 +553,7 @@ def test_export_md_with_leads(client):
     r2 = client.get(f"/memos/export-md?memo_id={memo_id}", headers=HEADERS)
     assert r2.status_code == 200
     text = r2.text
-    assert "### Platform Engineering" in text
+    assert "## Ownership & Execution" in text
     assert "Matteo" in text
 
 
@@ -713,3 +713,114 @@ def test_export_requires_auth(client):
 
     r2 = client.get("/memos/export-docx?memo_id=00000000-0000-0000-0000-000000000000")
     assert r2.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Feature 019: Narrative format verification
+# ---------------------------------------------------------------------------
+
+def test_memo_narrative_no_bullets(client):
+    """Memo content should use narrative paragraphs, not bullet lists."""
+    leads = [
+        {"name": "Alice", "role": "Engineering", "focus_area": "Backend"},
+        {"name": "Bob", "role": "Design", "focus_area": "UX"},
+    ]
+    client.post("/leads/seed", json={"leads": leads}, headers=HEADERS)
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
+    text = r2.text
+    # Narrative format: no bullet characters in section content
+    lines = text.split("\n")
+    content_lines = [l for l in lines if l.strip() and not l.startswith("#") and not l.startswith("**") and not l.startswith("---") and not l.startswith("*The emphasis")]
+    for line in content_lines:
+        assert not line.strip().startswith("- "), f"Found bullet in memo: {line}"
+        assert not line.strip().startswith("* "), f"Found bullet in memo: {line}"
+
+
+def test_memo_narrative_section_order(client):
+    """Memo must have sections in strict order: Strategic Objective, Progress, Week Ahead, Ownership, Success Criteria."""
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
+    text = r2.text
+
+    sections = [
+        "## Strategic Objective",
+        "## Progress This Week",
+        "## Week Ahead",
+        "## Ownership & Execution",
+        "## Success Criteria",
+    ]
+    positions = [text.index(s) for s in sections]
+    assert positions == sorted(positions), "Sections are not in the correct order"
+
+
+def test_memo_narrative_has_paragraphs(client):
+    """Each section should contain narrative text (non-empty paragraphs)."""
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
+    text = r2.text
+
+    assert "## Strategic Objective" in text
+    assert "## Progress This Week" in text
+    assert "## Week Ahead" in text
+    assert "## Success Criteria" in text
+
+
+def test_lead_email_field(client):
+    """Platform leads should accept and return email field."""
+    r = client.post(
+        "/leads/create",
+        json={
+            "name": "Test Lead",
+            "role": "Engineering",
+            "focus_area": "Backend",
+            "email": "test@example.com",
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["email"] == "test@example.com"
+
+
+def test_lead_email_field_optional(client):
+    """Email field should be optional."""
+    r = client.post(
+        "/leads/create",
+        json={"name": "No Email", "role": "Design", "focus_area": "UX"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["email"] is None
+
+
+def test_memo_dynamic_leadership(client):
+    """Memo should reflect dynamically added leads."""
+    leads = [
+        {"name": "Zara", "role": "Data Science", "focus_area": "ML Models"},
+    ]
+    client.post("/leads/seed", json={"leads": leads}, headers=HEADERS)
+
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    memo_id = r.json()["id"]
+
+    r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
+    assert "Zara" in r2.text
+    assert "Data Science" in r2.text
+
+
+def test_memo_response_text_fields(client):
+    """MemoResponse should return focus_next_week and success_criteria as strings."""
+    r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
+    assert r.status_code == 200
+    data = r.json()
+    # These should be strings (narrative text), not lists
+    assert isinstance(data["focus_next_week"], str)
+    assert isinstance(data["success_criteria"], str)
