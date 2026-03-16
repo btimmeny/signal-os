@@ -1188,7 +1188,21 @@ def _export_docx_fallback(memo: LeadershipMemo) -> bytes:
             focus = info.get("focus", "")
             exec_sentences.append(f"{name}, {role}, is focused on {focus}")
         execution_text = ". ".join(exec_sentences) + "." if exec_sentences else ""
-    doc.add_paragraph(execution_text)
+    # Render markdown-formatted execution text into proper docx formatting
+    import re
+    for block in execution_text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        para = doc.add_paragraph()
+        # Split on bold markers and apply formatting
+        parts = re.split(r"(\*\*.*?\*\*)", block)
+        for part in parts:
+            if part.startswith("**") and part.endswith("**"):
+                run = para.add_run(part[2:-2])
+                run.bold = True
+            else:
+                para.add_run(part)
 
     buf = io.BytesIO()
     doc.save(buf)
