@@ -23,6 +23,8 @@ from app.schemas import (
     CommitmentSetPriorityRequest,
     CommitmentUpdateRequest,
     FridayUpdateResponse,
+    SignalSummaryResponse,
+    StrategicSignalResponse,
     InitiativeCreateRequest,
     InitiativeLinkRequest,
     InitiativeLinkResponse,
@@ -65,6 +67,7 @@ from app.services import objectives as objective_svc
 from app.services import platform_leads as lead_svc
 from app.services import reminders as reminder_svc
 from app.services import status_reports as report_svc
+from app.services import strategic_signals as signal_svc
 from app.services import strategic_themes as theme_svc
 
 logging.basicConfig(
@@ -133,6 +136,11 @@ def commitments_open(body: CommitmentOpenRequest, db: Session = Depends(get_db))
         status=body.status.value,
         priority_order=body.priority_order,
     )
+    # Record strategic signal for task open event
+    try:
+        signal_svc.record_open_signal(db, c)
+    except Exception:
+        logger.warning("Failed to record open signal for %s", c.id, exc_info=True)
     return CommitmentResponse.from_orm_with_days(c)
 
 
@@ -148,6 +156,11 @@ def commitments_close(body: CommitmentCloseRequest, db: Session = Depends(get_db
         person=body.person,
     )
     if closed:
+        # Record strategic signal for task close event
+        try:
+            signal_svc.record_close_signal(db, closed)
+        except Exception:
+            logger.warning("Failed to record close signal for %s", closed.id, exc_info=True)
         return CommitmentResponse.from_orm_with_days(closed)
     if candidates:
         return JSONResponse(
@@ -171,9 +184,20 @@ def commitments_update(body: CommitmentUpdateRequest, db: Session = Depends(get_
         if k in fields and hasattr(fields[k], "value"):
             fields[k] = fields[k].value
 
+    # Check if this update is closing the commitment
+    is_closing = "status" in fields and fields["status"] == "CLOSED"
+
     c = commitment_svc.update_commitment(db, commitment_id=body.commitment_id, **fields)
     if not c:
         raise HTTPException(status_code=404, detail="Commitment not found")
+
+    # Record strategic signal if status changed to CLOSED
+    if is_closing:
+        try:
+            signal_svc.record_close_signal(db, c)
+        except Exception:
+            logger.warning("Failed to record close signal for %s", c.id, exc_info=True)
+
     return CommitmentResponse.from_orm_with_days(c)
 
 
@@ -937,6 +961,60 @@ def friday_update_list(
     """List recent Friday updates."""
     updates = friday_svc.list_updates(db, limit=limit)
     return [FridayUpdateResponse.from_orm_row(u) for u in updates]
+
+
+# ---------------------------------------------------------------------------
+# Strategic Signals (Feature 021)
+# ---------------------------------------------------------------------------
+
+@app.get("/signals/list", response_model=list[StrategicSignalResponse])
+def signals_list(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    event_type: Optional[str] = Query(None, description="Filter by OPENED or CLOSED"),
+    high_signal_only: bool = Query(False),
+):
+    """List recent strategic signals."""
+    rows = signal_svc.list_signals(
+        db, limit=limit, event_type=event_type, high_signal_only=high_signal_only,
+    )
+    return [StrategicSignalResponse.from_orm_row(s) for s in rows]
+
+
+@app.get("/signals/weekly-summary", response_model=SignalSummaryResponse)
+def signals_weekly_summary(db: Session = Depends(get_db)):
+    """Get aggregated strategic signal summary for the past 7 days."""
+    agg = signal_svc.aggregate_weekly_signals(db)
+    summary_text = signal_svc.format_signal_summary(agg)
+    return SignalSummaryResponse(
+        signal_count=agg["signal_count"],
+        high_signal_count=agg["high_signal_count"],
+        closure_count=agg["closure_count"],
+        open_count=agg["open_count"],
+        high_signal_closures=[
+            StrategicSignalResponse.from_orm_row(s) for s in agg["high_signal_closures"]
+        ],
+        unclear_signals=[
+            StrategicSignalResponse.from_orm_row(s) for s in agg["unclear_signals"]
+        ],
+        summary_text=summary_text,
+    )
+
+
+@app.get("/signals/commitment/{commitment_id}", response_model=list[StrategicSignalResponse])
+def signals_for_commitment(commitment_id: str, db: Session = Depends(get_db)):
+    """Get all strategic signals for a specific commitment."""
+    rows = signal_svc.get_signals_for_commitment(db, commitment_id)
+    return [StrategicSignalResponse.from_orm_row(s) for s in rows]
+
+
+@app.get("/signals/{signal_id}", response_model=StrategicSignalResponse)
+def signals_get(signal_id: str, db: Session = Depends(get_db)):
+    """Get a single strategic signal by ID."""
+    s = signal_svc.get_signal(db, signal_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    return StrategicSignalResponse.from_orm_row(s)
 
 
 # ---------------------------------------------------------------------------

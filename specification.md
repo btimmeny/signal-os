@@ -330,6 +330,7 @@ Each feature is documented independently in the `features/` directory. Features 
 | 018 | Memo Export System | [`features/018-memo-export-2026-03-15`](features/018-memo-export-2026-03-15/specification-feature-memo-export.md) | 2026-03-15 | Export memos to Word (.docx) and Markdown (.md) formats. Bidirectional status transitions (DRAFT, FINALIZED, SENT). |
 | 019 | Dynamic Memo System | [`features/019-dynamic-memo-system`](features/019-dynamic-memo-system/specification-feature-dynamic-memo.md) | 2026-03-16 | Restructured memo system: narrative paragraphs (no bullets), dynamic leadership from DB, file persistence, Pandoc conversion, Gmail distribution. |
 | 020 | Friday Strategic Execution Update | [`features/020-friday-strategic-update`](features/020-friday-strategic-update/specification-feature-friday-update.md) | 2026-03-16 | Friday leadership update: signal extraction from past 7 days, three strategic narrative options, Strategy Confidence Score (0-100), week-over-week trend, forwardable email. |
+| 021 | Strategic Signal System | [`features/021-strategic-signal-system`](features/021-strategic-signal-system/specification-feature-strategic-signals.md) | 2026-03-16 | Auto-generates Strategic Contribution Notes on task open and Execution Impact Notes on task close. Records signals with initiative/theme context, high-signal classification, and category. Feeds into Friday updates and memos. |
 
 ## 11. Future Considerations
 
