@@ -660,6 +660,8 @@ def _gather_dashboard_snapshot(db: Session) -> dict:
     active_workstreams: list[dict] = []
     wins_this_week: list[str] = []
 
+    open_ids = {str(c.id) for c in all_open}
+
     for c in all_open:
         if c.priority_order is not None:
             top_focus.append(c.title)
@@ -667,8 +669,12 @@ def _gather_dashboard_snapshot(db: Session) -> dict:
             due_at = c.due_at if c.due_at.tzinfo else c.due_at.replace(tzinfo=timezone.utc)
             if due_at <= due_soon_cutoff:
                 due_soon.append(f"{c.title} (due {c.due_at.strftime('%b %-d')})")
-        # Needs decision: WAITING or blocked
-        if (c.status == CommitmentStatus.WAITING) or c.blocked_by_commitment_id:
+        # Needs decision: WAITING or blocked (only if blocker is still open)
+        is_blocked = (
+            c.blocked_by_commitment_id is not None
+            and str(c.blocked_by_commitment_id) in open_ids
+        )
+        if (c.status == CommitmentStatus.WAITING) or is_blocked:
             needs_decision.append(c.title)
 
     # Wins this week
@@ -707,20 +713,19 @@ def _gather_dashboard_snapshot(db: Session) -> dict:
                     "tasks": [t.title for t in prog_tasks],
                 })
 
-        # Also count tasks linked via join table (legacy)
-        task_count = (
-            db.query(InitiativeCommitmentLink)
+        # Count unique open tasks linked to this initiative (union of direct + join table)
+        direct_ids = {str(c.id) for c in all_open if c.initiative_id == init.id}
+        join_table_ids = {
+            str(link.commitment_id)
+            for link in db.query(InitiativeCommitmentLink)
             .join(Commitment, InitiativeCommitmentLink.commitment_id == Commitment.id)
             .filter(
                 InitiativeCommitmentLink.initiative_id == init.id,
                 Commitment.status != CommitmentStatus.CLOSED,
             )
-            .count()
-        )
-
-        # Count direct initiative_id links
-        direct_count = len([c for c in all_open if c.initiative_id == init.id])
-        total_tasks = max(task_count, direct_count)
+            .all()
+        }
+        total_tasks = len(direct_ids | join_table_ids)
 
         if total_tasks > 0 or program_data:
             ws: dict = {
