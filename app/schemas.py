@@ -713,6 +713,167 @@ class SignalSummaryResponse(BaseModel):
     summary_text: str = ""
 
 
+# ---------------------------------------------------------------------------
+# Strategic Execution Intelligence schemas (Feature 022)
+# ---------------------------------------------------------------------------
+
+class ContributionNoteResponse(BaseModel):
+    id: str
+    task_id: str
+    task_title: Optional[str] = None
+    initiative_id: Optional[str] = None
+    initiative_title: Optional[str] = None
+    strategic_theme: Optional[str] = None
+    strategic_contribution_note: str
+    source: str = "inferred"
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ContributionNoteResponse":
+        return cls(
+            id=str(obj.id),
+            task_id=str(obj.task_id),
+            task_title=obj.commitment.title if obj.commitment else None,
+            initiative_id=str(obj.initiative_id) if obj.initiative_id else None,
+            initiative_title=obj.initiative.title if obj.initiative else None,
+            strategic_theme=obj.strategic_theme,
+            strategic_contribution_note=obj.strategic_contribution_note,
+            source=obj.source,
+            created_at=obj.created_at,
+        )
+
+
+class ContributionNoteConfirmRequest(BaseModel):
+    updated_text: Optional[str] = None
+    initiative_id: Optional[str] = None
+    strategic_theme: Optional[str] = None
+
+
+class ImpactNoteResponse(BaseModel):
+    id: str
+    task_id: str
+    task_title: Optional[str] = None
+    initiative_id: Optional[str] = None
+    initiative_title: Optional[str] = None
+    execution_impact_note: str
+    strategic_signal_flag: bool = False
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ImpactNoteResponse":
+        return cls(
+            id=str(obj.id),
+            task_id=str(obj.task_id),
+            task_title=obj.commitment.title if obj.commitment else None,
+            initiative_id=str(obj.initiative_id) if obj.initiative_id else None,
+            initiative_title=obj.initiative.title if obj.initiative else None,
+            execution_impact_note=obj.execution_impact_note,
+            strategic_signal_flag=bool(obj.strategic_signal_flag),
+            created_at=obj.created_at,
+        )
+
+
+class StrategicNarrativeResponse(BaseModel):
+    id: str
+    date: datetime
+    strategic_objective: Optional[str] = None
+    strategic_themes: Optional[list[str]] = None
+    momentum_signals: Optional[list[str]] = None
+    friction_signals: Optional[list[str]] = None
+    narrative_summary: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "StrategicNarrativeResponse":
+        import json
+
+        def _parse_json_list(val):
+            if val is None:
+                return None
+            if isinstance(val, list):
+                return val
+            try:
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+        return cls(
+            id=str(obj.id),
+            date=obj.date,
+            strategic_objective=obj.strategic_objective,
+            strategic_themes=_parse_json_list(obj.strategic_themes),
+            momentum_signals=_parse_json_list(obj.momentum_signals),
+            friction_signals=_parse_json_list(obj.friction_signals),
+            narrative_summary=obj.narrative_summary,
+            created_at=obj.created_at,
+        )
+
+
+class ConfidenceHistoryResponse(BaseModel):
+    id: str
+    date: datetime
+    confidence_score: int
+    previous_score: Optional[int] = None
+    trend_direction: Optional[str] = None
+    confidence_explanation: Optional[str] = None
+    band_label: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "ConfidenceHistoryResponse":
+        from app.services.strategic_intelligence import confidence_band_label
+
+        return cls(
+            id=str(obj.id),
+            date=obj.date,
+            confidence_score=obj.confidence_score,
+            previous_score=obj.previous_score,
+            trend_direction=obj.trend_direction,
+            confidence_explanation=obj.confidence_explanation,
+            band_label=confidence_band_label(obj.confidence_score),
+            created_at=obj.created_at,
+        )
+
+
+class WeeklyNarrativeResponse(BaseModel):
+    id: str
+    week_date: datetime
+    narrative_type: str
+    strategic_objective: Optional[str] = None
+    narrative_text: str
+    recommended_flag: bool = False
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_row(cls, obj) -> "WeeklyNarrativeResponse":
+        return cls(
+            id=str(obj.id),
+            week_date=obj.week_date,
+            narrative_type=obj.narrative_type,
+            strategic_objective=obj.strategic_objective,
+            narrative_text=obj.narrative_text,
+            recommended_flag=bool(obj.recommended_flag),
+            created_at=obj.created_at,
+        )
+
+
+class IntelligenceUpdateResponse(BaseModel):
+    update: Optional[FridayUpdateResponse] = None
+    strategic_narrative: Optional[StrategicNarrativeResponse] = None
+    confidence_history: Optional[ConfidenceHistoryResponse] = None
+    weekly_narratives: list[WeeklyNarrativeResponse] = []
+
+
 class UpdateStatus(str, Enum):
     DRAFT = "DRAFT"
     SENT = "SENT"

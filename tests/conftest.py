@@ -13,10 +13,12 @@ os.environ["AGENT_API_KEY"] = "test-key"
 
 from app.db import Base, get_db  # noqa: E402
 from app.models import (  # noqa: E402, F401 — register models
-    Commitment, CommitmentComment, Initiative, InitiativeCommitmentLink,
-    LeadershipMemo, ObjectiveCommitmentLink, ObjectiveUpdate, PlatformLead,
-    Reminder, StatusReport, StrategicObjective, StrategicSignal, StrategicTheme,
-    WeeklyStrategyUpdate,
+    Commitment, CommitmentComment, ExecutionImpactNote, Initiative,
+    InitiativeCommitmentLink, LeadershipMemo, ObjectiveCommitmentLink,
+    ObjectiveUpdate, PlatformLead, Reminder, StatusReport,
+    StrategicContributionNote, StrategicNarrative, StrategicObjective,
+    StrategicSignal, StrategicTheme, StrategyConfidenceHistory,
+    WeeklyNarrative, WeeklyStrategyUpdate,
 )
 from app.main import app  # noqa: E402
 

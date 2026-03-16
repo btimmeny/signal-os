@@ -619,6 +619,7 @@ class StrategicSignal(Base):
     execution_impact = Column(Text, nullable=True)
     is_high_signal = Column(Integer, nullable=False, default=0)
     signal_category = Column(String(128), nullable=True)
+    confidence_weight = Column(Integer, nullable=True, default=50)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -631,6 +632,136 @@ class StrategicSignal(Base):
 
     def __repr__(self) -> str:
         return f"<StrategicSignal {self.id} event={self.event_type} commitment={self.commitment_id}>"
+
+
+# ---------------------------------------------------------------------------
+# Strategic Execution Intelligence (Feature 022)
+# ---------------------------------------------------------------------------
+
+class NoteSource(str, enum.Enum):
+    INFERRED = "inferred"
+    USER_CONFIRMED = "user_confirmed"
+
+
+class StrategicContributionNote(Base):
+    __tablename__ = "strategic_contribution_notes"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    task_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    initiative_id = Column(
+        Uuid,
+        ForeignKey("initiatives.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    strategic_theme = Column(String(256), nullable=True)
+    strategic_contribution_note = Column(Text, nullable=False)
+    source = Column(String(32), nullable=False, default="inferred")
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    commitment = relationship("Commitment", foreign_keys=[task_id])
+    initiative = relationship("Initiative")
+
+    def __repr__(self) -> str:
+        return f"<StrategicContributionNote {self.id} task={self.task_id}>"
+
+
+class ExecutionImpactNote(Base):
+    __tablename__ = "execution_impact_notes"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    task_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    initiative_id = Column(
+        Uuid,
+        ForeignKey("initiatives.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    execution_impact_note = Column(Text, nullable=False)
+    strategic_signal_flag = Column(Integer, nullable=False, default=0)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    commitment = relationship("Commitment", foreign_keys=[task_id])
+    initiative = relationship("Initiative")
+
+    def __repr__(self) -> str:
+        return f"<ExecutionImpactNote {self.id} task={self.task_id}>"
+
+
+class StrategicNarrative(Base):
+    __tablename__ = "strategic_narratives"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    date = Column(DateTime(timezone=True), nullable=False, index=True)
+    strategic_objective = Column(Text, nullable=True)
+    strategic_themes = Column(Text, nullable=True)  # JSON list
+    momentum_signals = Column(Text, nullable=True)  # JSON list
+    friction_signals = Column(Text, nullable=True)  # JSON list
+    narrative_summary = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<StrategicNarrative {self.id} date={self.date}>"
+
+
+class StrategyConfidenceHistory(Base):
+    __tablename__ = "strategy_confidence_history"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    date = Column(DateTime(timezone=True), nullable=False, index=True)
+    confidence_score = Column(Integer, nullable=False)
+    previous_score = Column(Integer, nullable=True)
+    trend_direction = Column(String(32), nullable=True)  # improving, flat, declining
+    confidence_explanation = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<StrategyConfidenceHistory {self.id} score={self.confidence_score}>"
+
+
+class WeeklyNarrative(Base):
+    __tablename__ = "weekly_narratives"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    week_date = Column(DateTime(timezone=True), nullable=False, index=True)
+    narrative_type = Column(String(64), nullable=False)  # execution_progress, momentum, alignment
+    strategic_objective = Column(Text, nullable=True)
+    narrative_text = Column(Text, nullable=False)
+    recommended_flag = Column(Integer, nullable=False, default=0)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WeeklyNarrative {self.id} type={self.narrative_type} week={self.week_date}>"
 
 
 class WeeklyStrategyUpdate(Base):
