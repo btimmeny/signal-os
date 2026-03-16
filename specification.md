@@ -328,6 +328,7 @@ Each feature is documented independently in the `features/` directory. Features 
 | 016 | Strategic Themes | [`features/016-strategic-themes-2026-03-15`](features/016-strategic-themes-2026-03-15/specification-feature-strategic-themes.md) | 2026-03-15 | Added Strategic Themes as top-level hierarchy (Theme → Initiative → Task). CRUD + seed endpoints, theme-level grouping in `/tasks`, initiative focus warning (>15 tasks). |
 | 017 | Weekly Platform Alignment Memo | [`features/017-weekly-memo-2026-03-15`](features/017-weekly-memo-2026-03-15/specification-feature-weekly-memo.md) | 2026-03-15 | Added Platform Leads and Leadership Memos. Generate weekly memos from dashboard state grouped by lead, with CRUD + render endpoints. |
 | 018 | Memo Export System | [`features/018-memo-export-2026-03-15`](features/018-memo-export-2026-03-15/specification-feature-memo-export.md) | 2026-03-15 | Export memos to Word (.docx) and Markdown (.md) formats. Bidirectional status transitions (DRAFT, FINALIZED, SENT). |
+| 019 | Dynamic Memo System | [`features/019-dynamic-memo-system`](features/019-dynamic-memo-system/specification-feature-dynamic-memo.md) | 2026-03-16 | Restructured memo system: narrative paragraphs (no bullets), dynamic leadership from DB, file persistence, Pandoc conversion, Gmail distribution. |
 
 ## 11. Future Considerations
 

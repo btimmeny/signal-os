@@ -751,6 +751,7 @@ def leads_create(body: PlatformLeadCreateRequest, db: Session = Depends(get_db))
         name=body.name,
         role=body.role,
         focus_area=body.focus_area,
+        email=body.email,
         description=body.description,
         initiative_ids=body.initiative_ids,
         active=body.active,

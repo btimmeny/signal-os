@@ -501,6 +501,7 @@ class PlatformLead(Base):
     name = Column(String(256), nullable=False, index=True)
     role = Column(String(512), nullable=False)
     focus_area = Column(String(512), nullable=False)
+    email = Column(String(512), nullable=True)
     description = Column(Text, nullable=True)
     initiative_ids = Column(Text, nullable=True)  # JSON array of initiative UUIDs
     active = Column(
