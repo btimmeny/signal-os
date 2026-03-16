@@ -22,9 +22,16 @@ from app.schemas import (
     CommitmentResponse,
     CommitmentSetPriorityRequest,
     CommitmentUpdateRequest,
+    ConfidenceHistoryResponse,
+    ContributionNoteConfirmRequest,
+    ContributionNoteResponse,
     FridayUpdateResponse,
+    ImpactNoteResponse,
+    IntelligenceUpdateResponse,
     SignalSummaryResponse,
+    StrategicNarrativeResponse,
     StrategicSignalResponse,
+    WeeklyNarrativeResponse,
     InitiativeCreateRequest,
     InitiativeLinkRequest,
     InitiativeLinkResponse,
@@ -67,6 +74,7 @@ from app.services import objectives as objective_svc
 from app.services import platform_leads as lead_svc
 from app.services import reminders as reminder_svc
 from app.services import status_reports as report_svc
+from app.services import strategic_intelligence as intel_svc
 from app.services import strategic_signals as signal_svc
 from app.services import strategic_themes as theme_svc
 
@@ -141,6 +149,11 @@ def commitments_open(body: CommitmentOpenRequest, db: Session = Depends(get_db))
         signal_svc.record_open_signal(db, c)
     except Exception:
         logger.warning("Failed to record open signal for %s", c.id, exc_info=True)
+    # Record contribution note (Feature 022)
+    try:
+        intel_svc.record_contribution_note(db, c)
+    except Exception:
+        logger.warning("Failed to record contribution note for %s", c.id, exc_info=True)
     return CommitmentResponse.from_orm_with_days(c)
 
 
@@ -161,6 +174,11 @@ def commitments_close(body: CommitmentCloseRequest, db: Session = Depends(get_db
             signal_svc.record_close_signal(db, closed)
         except Exception:
             logger.warning("Failed to record close signal for %s", closed.id, exc_info=True)
+        # Record impact note (Feature 022)
+        try:
+            intel_svc.record_impact_note(db, closed)
+        except Exception:
+            logger.warning("Failed to record impact note for %s", closed.id, exc_info=True)
         return CommitmentResponse.from_orm_with_days(closed)
     if candidates:
         return JSONResponse(
@@ -1015,6 +1033,128 @@ def signals_get(signal_id: str, db: Session = Depends(get_db)):
     if not s:
         raise HTTPException(status_code=404, detail="Signal not found")
     return StrategicSignalResponse.from_orm_row(s)
+
+
+# ---------------------------------------------------------------------------
+# Strategic Execution Intelligence (Feature 022)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/intelligence/generate")
+def intelligence_generate(db: Session = Depends(get_db)):
+    """Generate the complete Strategic Execution Intelligence update.
+
+    Populates StrategicNarrative, StrategyConfidenceHistory, and
+    WeeklyNarrative tables alongside the base Friday update.
+    All operations are idempotent.
+    """
+    result = intel_svc.generate_intelligence_update(db, send_email=True)
+    update = result["update"]
+    email_body = friday_svc.compose_update_email(update)
+    return IntelligenceUpdateResponse(
+        update=FridayUpdateResponse.from_orm_row(update, email_body=email_body),
+        strategic_narrative=StrategicNarrativeResponse.from_orm_row(result["strategic_narrative"]),
+        confidence_history=ConfidenceHistoryResponse.from_orm_row(result["confidence_history"]),
+        weekly_narratives=[
+            WeeklyNarrativeResponse.from_orm_row(wn) for wn in result["weekly_narratives"]
+        ],
+    )
+
+
+@app.get("/intelligence/contribution-notes", response_model=list[ContributionNoteResponse])
+def intelligence_contribution_notes(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    days_back: Optional[int] = Query(None, ge=1, le=365),
+):
+    """List recent strategic contribution notes."""
+    rows = intel_svc.list_contribution_notes(db, limit=limit, days_back=days_back)
+    return [ContributionNoteResponse.from_orm_row(n) for n in rows]
+
+
+@app.get("/intelligence/impact-notes", response_model=list[ImpactNoteResponse])
+def intelligence_impact_notes(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    days_back: Optional[int] = Query(None, ge=1, le=365),
+):
+    """List recent execution impact notes."""
+    rows = intel_svc.list_impact_notes(db, limit=limit, days_back=days_back)
+    return [ImpactNoteResponse.from_orm_row(n) for n in rows]
+
+
+@app.get("/intelligence/unclear-contributions", response_model=list[ContributionNoteResponse])
+def intelligence_unclear_contributions(
+    db: Session = Depends(get_db),
+    days_back: int = Query(7, ge=1, le=365),
+):
+    """Get contribution notes needing clarification (no initiative link)."""
+    rows = intel_svc.get_unclear_contributions(db, days_back=days_back)
+    return [ContributionNoteResponse.from_orm_row(n) for n in rows]
+
+
+@app.patch("/intelligence/contribution-notes/{note_id}", response_model=ContributionNoteResponse)
+def intelligence_confirm_contribution(
+    note_id: str,
+    body: ContributionNoteConfirmRequest,
+    db: Session = Depends(get_db),
+):
+    """Confirm or update a contribution note (Brian's clarification)."""
+    note = intel_svc.confirm_contribution_note(
+        db,
+        note_id,
+        updated_text=body.updated_text,
+        initiative_id=body.initiative_id,
+        strategic_theme=body.strategic_theme,
+    )
+    if not note:
+        raise HTTPException(status_code=404, detail="Contribution note not found")
+    return ContributionNoteResponse.from_orm_row(note)
+
+
+@app.get("/intelligence/narratives", response_model=list[StrategicNarrativeResponse])
+def intelligence_narratives(
+    db: Session = Depends(get_db),
+    limit: int = Query(10, ge=1, le=52),
+):
+    """List recent strategic narratives (week-over-week understanding)."""
+    rows = intel_svc.list_strategic_narratives(db, limit=limit)
+    return [StrategicNarrativeResponse.from_orm_row(n) for n in rows]
+
+
+@app.get("/intelligence/confidence-history", response_model=list[ConfidenceHistoryResponse])
+def intelligence_confidence_history(
+    db: Session = Depends(get_db),
+    limit: int = Query(12, ge=1, le=52),
+):
+    """Get Strategy Confidence Score history."""
+    rows = intel_svc.get_confidence_history(db, limit=limit)
+    return [ConfidenceHistoryResponse.from_orm_row(r) for r in rows]
+
+
+@app.get("/intelligence/confidence-latest", response_model=ConfidenceHistoryResponse)
+def intelligence_confidence_latest(db: Session = Depends(get_db)):
+    """Get the most recent Strategy Confidence Score."""
+    record = intel_svc.get_latest_confidence(db)
+    if not record:
+        raise HTTPException(status_code=404, detail="No confidence history found")
+    return ConfidenceHistoryResponse.from_orm_row(record)
+
+
+@app.get("/intelligence/weekly-narratives", response_model=list[WeeklyNarrativeResponse])
+def intelligence_weekly_narratives(db: Session = Depends(get_db)):
+    """Get the three narrative drafts for the current week."""
+    rows = intel_svc.get_weekly_narratives(db)
+    return [WeeklyNarrativeResponse.from_orm_row(n) for n in rows]
+
+
+@app.get("/intelligence/recommended-narrative", response_model=WeeklyNarrativeResponse)
+def intelligence_recommended_narrative(db: Session = Depends(get_db)):
+    """Get the recommended narrative for the current week."""
+    narrative = intel_svc.get_recommended_narrative(db)
+    if not narrative:
+        raise HTTPException(status_code=404, detail="No recommended narrative found")
+    return WeeklyNarrativeResponse.from_orm_row(narrative)
 
 
 # ---------------------------------------------------------------------------
