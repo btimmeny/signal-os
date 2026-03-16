@@ -747,15 +747,29 @@ def send_memo_email(
             )
             msg.attach(part)
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(gmail_user, gmail_password)
-            server.sendmail(gmail_user, recipients, msg.as_string())
-        log.info("Memo email sent to %s", ", ".join(recipients))
-        return True
-    except Exception:
-        log.exception("Failed to send memo email")
-        return False
+    # Try port 587 (STARTTLS) first — more commonly allowed on cloud platforms,
+    # then fall back to port 465 (SSL) if that fails.
+    for method, port in [("STARTTLS", 587), ("SSL", 465)]:
+        try:
+            if method == "STARTTLS":
+                with smtplib.SMTP("smtp.gmail.com", port, timeout=30) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(gmail_user, gmail_password)
+                    server.sendmail(gmail_user, recipients, msg.as_string())
+            else:
+                with smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30) as server:
+                    server.login(gmail_user, gmail_password)
+                    server.sendmail(gmail_user, recipients, msg.as_string())
+            log.info("Memo email sent to %s via %s:%d", ", ".join(recipients), method, port)
+            return True
+        except Exception:
+            log.warning("SMTP %s:%d failed", method, port, exc_info=True)
+            continue
+
+    log.error("All SMTP methods failed — could not send memo email")
+    return False
 
 
 # ---------------------------------------------------------------------------
