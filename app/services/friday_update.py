@@ -808,61 +808,55 @@ def compose_update_email(update: WeeklyStrategyUpdate) -> str:
 
 
 def send_update_email(update: WeeklyStrategyUpdate) -> bool:
-    """Send the Friday update email to Brian via Gmail.
+    """Send the Friday update email via Resend API.
 
-    Uses SMTP with an app password (env vars GMAIL_USER and GMAIL_APP_PASSWORD).
+    Uses env vars:
+      RESEND_API_KEY  — Resend API key (required)
+      RESEND_FROM     — sender address (default: Signal OS <onboarding@resend.dev>)
+      FRIDAY_UPDATE_RECIPIENT — recipient (default: GMAIL_USER fallback)
     Returns True on success.
     """
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
+    import httpx
 
-    gmail_user = os.environ.get("GMAIL_USER")
-    gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
-    recipient = os.environ.get("FRIDAY_UPDATE_RECIPIENT", gmail_user)
-
-    if not gmail_user or not gmail_password:
-        log.warning("Gmail credentials not configured — skipping Friday update email")
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if not resend_key:
+        log.warning("RESEND_API_KEY not configured — skipping Friday update email")
         return False
 
+    from_addr = os.environ.get("RESEND_FROM", "Signal OS <onboarding@resend.dev>")
+    recipient = os.environ.get(
+        "FRIDAY_UPDATE_RECIPIENT",
+        os.environ.get("GMAIL_USER", ""),
+    )
     if not recipient:
         log.warning("No recipient configured — skipping Friday update email")
         return False
 
     date_str = update.week_start_date.strftime("%B %-d, %Y")
     subject = f"Friday Strategic Execution Update — {date_str}"
-
     email_body = compose_update_email(update)
 
-    msg = MIMEMultipart()
-    msg["From"] = gmail_user
-    msg["To"] = recipient
-    msg["Subject"] = subject
-    msg.attach(MIMEText(email_body, "plain"))
-
-    # Try port 587 (STARTTLS) first — more commonly allowed on cloud platforms,
-    # then fall back to port 465 (SSL) if that fails.
-    for method, port in [("STARTTLS", 587), ("SSL", 465)]:
-        try:
-            if method == "STARTTLS":
-                with smtplib.SMTP("smtp.gmail.com", port, timeout=30) as server:
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-                    server.login(gmail_user, gmail_password)
-                    server.sendmail(gmail_user, [recipient], msg.as_string())
-            else:
-                with smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30) as server:
-                    server.login(gmail_user, gmail_password)
-                    server.sendmail(gmail_user, [recipient], msg.as_string())
-            log.info("Friday update email sent to %s via %s:%d", recipient, method, port)
+    try:
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {resend_key}"},
+            json={
+                "from": from_addr,
+                "to": [recipient],
+                "subject": subject,
+                "text": email_body,
+            },
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            log.info("Friday update email sent to %s via Resend (id=%s)", recipient, resp.json().get("id"))
             return True
-        except Exception:
-            log.warning("SMTP %s:%d failed", method, port, exc_info=True)
-            continue
-
-    log.error("All SMTP methods failed — could not send Friday update email")
-    return False
+        else:
+            log.error("Resend API error %d: %s", resp.status_code, resp.text)
+            return False
+    except Exception:
+        log.exception("Failed to send Friday update email via Resend")
+        return False
 
 
 # ---------------------------------------------------------------------------

@@ -691,23 +691,22 @@ def send_memo_email(
     memo: LeadershipMemo,
     docx_path: Optional[Path] = None,
 ) -> bool:
-    """Send the weekly memo via Gmail to the leadership team.
+    """Send the weekly memo via Resend API to the leadership team.
 
-    Uses SMTP with an app password (env vars GMAIL_USER and GMAIL_APP_PASSWORD).
-    Attaches the .docx file if available.  Returns True on success.
+    Uses env vars:
+      RESEND_API_KEY  — Resend API key (required)
+      RESEND_FROM     — sender address (default: Signal OS <onboarding@resend.dev>)
+    Recipients come from platform leads with email addresses.
+    Returns True on success.
     """
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.base import MIMEBase
-    from email import encoders
+    import httpx
 
-    gmail_user = os.environ.get("GMAIL_USER")
-    gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
-
-    if not gmail_user or not gmail_password:
-        log.warning("Gmail credentials not configured — skipping email send")
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if not resend_key:
+        log.warning("RESEND_API_KEY not configured — skipping memo email")
         return False
+
+    from_addr = os.environ.get("RESEND_FROM", "Signal OS <onboarding@resend.dev>")
 
     recipients = _build_recipient_list(db)
     if not recipients:
@@ -719,12 +718,6 @@ def send_memo_email(
 
     md_content = format_memo_markdown(memo)
 
-    msg = MIMEMultipart()
-    msg["From"] = gmail_user
-    msg["To"] = ", ".join(recipients)
-    msg["Subject"] = subject
-
-    # Email body
     body = (
         f"Please find attached the AI Platform Weekly Leadership Memo for the "
         f"week of {date_str}.\n\n"
@@ -733,43 +726,43 @@ def send_memo_email(
         f"Please review and reach out with any questions or feedback.\n\n"
         f"---\n\n{md_content}"
     )
-    msg.attach(MIMEText(body, "plain"))
 
-    # Attach .docx if available
+    # Build attachments list for Resend
+    attachments = []
     if docx_path and docx_path.exists():
+        import base64
         with open(docx_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={docx_path.name}",
-            )
-            msg.attach(part)
+            docx_b64 = base64.b64encode(f.read()).decode()
+        attachments.append({
+            "filename": docx_path.name,
+            "content": docx_b64,
+        })
 
-    # Try port 587 (STARTTLS) first — more commonly allowed on cloud platforms,
-    # then fall back to port 465 (SSL) if that fails.
-    for method, port in [("STARTTLS", 587), ("SSL", 465)]:
-        try:
-            if method == "STARTTLS":
-                with smtplib.SMTP("smtp.gmail.com", port, timeout=30) as server:
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-                    server.login(gmail_user, gmail_password)
-                    server.sendmail(gmail_user, recipients, msg.as_string())
-            else:
-                with smtplib.SMTP_SSL("smtp.gmail.com", port, timeout=30) as server:
-                    server.login(gmail_user, gmail_password)
-                    server.sendmail(gmail_user, recipients, msg.as_string())
-            log.info("Memo email sent to %s via %s:%d", ", ".join(recipients), method, port)
+    payload: dict = {
+        "from": from_addr,
+        "to": recipients,
+        "subject": subject,
+        "text": body,
+    }
+    if attachments:
+        payload["attachments"] = attachments
+
+    try:
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {resend_key}"},
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            log.info("Memo email sent to %s via Resend (id=%s)", ", ".join(recipients), resp.json().get("id"))
             return True
-        except Exception:
-            log.warning("SMTP %s:%d failed", method, port, exc_info=True)
-            continue
-
-    log.error("All SMTP methods failed — could not send memo email")
-    return False
+        else:
+            log.error("Resend API error %d: %s", resp.status_code, resp.text)
+            return False
+    except Exception:
+        log.exception("Failed to send memo email via Resend")
+        return False
 
 
 # ---------------------------------------------------------------------------
