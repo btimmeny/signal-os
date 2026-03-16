@@ -602,6 +602,36 @@ def format_dashboard_text(db: Session) -> str:
     )
     theme_map = {str(t.id): t for t in active_themes}
 
+    # Build architecture-link lookup: commitment_id -> list of linked initiative names
+    # (from join table, used to show architecture ownership alongside initiative grouping)
+    all_links = (
+        db.query(InitiativeCommitmentLink)
+        .filter(InitiativeCommitmentLink.commitment_id.in_([c.id for c in all_open]))
+        .all()
+    )
+    arch_links: dict[str, list[str]] = {}  # commitment_id -> [initiative_title, ...]
+    for link in all_links:
+        cid = str(link.commitment_id)
+        iid = str(link.initiative_id)
+        init_obj = init_map.get(iid)
+        if init_obj:
+            if cid not in arch_links:
+                arch_links[cid] = []
+            arch_links[cid].append(init_obj.title)
+
+    def _arch_suffix(c: Commitment) -> str:
+        """Return architecture group tag if task has a join-table link to an initiative
+        different from its direct initiative_id."""
+        cid = str(c.id)
+        linked = arch_links.get(cid, [])
+        # Filter out the task's own initiative (avoid redundant tag)
+        own_init = init_map.get(str(c.initiative_id)) if c.initiative_id else None
+        own_title = own_init.title if own_init else None
+        other = [name for name in linked if name != own_title]
+        if other:
+            return f" [{', '.join(other)}]"
+        return ""
+
     # Categorise tasks into sections (a task appears in the first matching section)
     used_ids: set[str] = set()
     top_focus: list[Commitment] = []
@@ -709,7 +739,7 @@ def format_dashboard_text(db: Session) -> str:
     if top_focus:
         lines.append("\U0001f3af Priority Execution")
         for i, c in enumerate(top_focus, 1):
-            suffix = _blocked_suffix(c, all_by_id)
+            suffix = _blocked_suffix(c, all_by_id) + _arch_suffix(c)
             lines.append(f"{i}. {c.title}{_task_line_suffix(c)}{suffix}")
         lines.append("")
 
@@ -717,7 +747,7 @@ def format_dashboard_text(db: Session) -> str:
     if needs_decision:
         lines.append("\u26a0\ufe0f Needs Decision")
         for c in needs_decision:
-            suffix = _blocked_suffix(c, all_by_id)
+            suffix = _blocked_suffix(c, all_by_id) + _arch_suffix(c)
             lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}{suffix}")
         lines.append("")
 
@@ -725,7 +755,7 @@ def format_dashboard_text(db: Session) -> str:
     if due_soon:
         lines.append("\U0001f525 Due Soon")
         for c in due_soon:
-            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}{_arch_suffix(c)}")
         lines.append("")
 
     # Section 4: Initiatives — Theme > Initiative > Program > Tasks
@@ -790,11 +820,11 @@ def format_dashboard_text(db: Session) -> str:
                     prog_owner = f" ({prog_obj.owner})" if prog_obj and prog_obj.owner else ""
                     lines.append(f"{' ' * (indent + 2)}{prog_title}{prog_owner}")
                     for c in tasks:
-                        suffix = _blocked_suffix(c, all_by_id) + _pipeline_status(c)
+                        suffix = _blocked_suffix(c, all_by_id) + _pipeline_status(c) + _arch_suffix(c)
                         lines.append(f"{' ' * (indent + 4)}\u2022 {c.title}{_task_line_suffix(c)}{suffix}")
                 else:
                     for c in tasks:
-                        suffix = _blocked_suffix(c, all_by_id) + _pipeline_status(c)
+                        suffix = _blocked_suffix(c, all_by_id) + _pipeline_status(c) + _arch_suffix(c)
                         lines.append(f"{' ' * (indent + 2)}\u2022 {c.title}{_task_line_suffix(c)}{suffix}")
 
         # Render themed initiatives grouped under their theme
@@ -820,14 +850,14 @@ def format_dashboard_text(db: Session) -> str:
     if org_hiring:
         lines.append("\U0001f331 Organization & Hiring")
         for c in org_hiring:
-            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}{_arch_suffix(c)}")
         lines.append("")
 
     # Overflow: tasks that didn't fit any section
     if everything_else:
         lines.append("Everything Else")
         for c in everything_else:
-            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}{_arch_suffix(c)}")
         lines.append("")
 
     return "\n".join(lines).strip()
