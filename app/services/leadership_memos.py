@@ -5,14 +5,14 @@ All leadership roles, ownership, and organisational references are resolved
 dynamically from the ``platform_leads`` table — nothing is hard-coded.
 
 Memo sections follow a strict order:
-  1. Strategic Objective
+  1. Strategic Direction
   2. Progress This Week
-  3. Week Ahead
-  4. Ownership & Execution
-  5. Success Criteria
+  3. Why It Matters
+  4. Next Platform Moves
+  5. Leadership Execution
 
-Content is rendered as short narrative paragraphs (3-5 sentences each,
-no bullet lists).  Target length: 350-500 words.
+Content is rendered as leadership narrative paragraphs.
+Target length: 600-800 words.
 """
 
 from __future__ import annotations
@@ -49,10 +49,33 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_STRATEGIC_OBJECTIVE = (
-    "Our objective is to build the firm's AI-native development and knowledge "
-    "platform enabling agents to build, review, and operate software using the "
-    "firm's infrastructure, data, and knowledge fabric."
+    "The organization is building an AI-native engineering platform where "
+    "intelligent agents participate directly in the software development "
+    "lifecycle."
 )
+
+# Strategy memory: persistent understanding of platform direction
+STRATEGY_MEMORY = (
+    "The organization is building an AI-native engineering platform where "
+    "intelligent agents participate directly in the software development "
+    "lifecycle. This platform has four major architectural components: "
+    "AI-Native SDLC, Agent Infrastructure, Knowledge Layer, and Data Platform. "
+    "The AI-Native SDLC enables AI agents to assist with code creation, review, "
+    "remediation, and deployment. Agent Infrastructure provides the orchestration "
+    "layer for AI agents, including swarm architectures and event-driven workflows. "
+    "The Knowledge Layer organizes specifications, architecture decisions, and "
+    "operational knowledge so that both engineers and AI agents can use it. "
+    "The Data Platform ensures that AI systems have reliable access to structured "
+    "internal data and that outputs from AI systems can be distributed across "
+    "the organization."
+)
+
+PLATFORM_PILLARS = [
+    "AI-Native SDLC",
+    "Agent Infrastructure",
+    "Knowledge Layer",
+    "Data Platform",
+]
 
 # Repo-relative paths for file persistence
 _MEMO_DIR = Path("leadership-memos/ai-platform/weekly")
@@ -120,18 +143,20 @@ def _lead_initiative_ids(lead: PlatformLead) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _build_narrative_strategic_objective(
+def _build_narrative_strategic_direction(
     db: Session,
     override: Optional[str] = None,
 ) -> str:
-    """Return the strategic objective paragraph.
+    """Build the *Strategic Direction* section (2-3 paragraphs).
 
-    Uses the override if provided, otherwise falls back to the most recent
-    active strategic theme description or the built-in default.
+    Describes what the organization is building, how the current week fits
+    into the broader strategy, and how the platform pillars are evolving.
+    Reinforces the strategy memory.
     """
     if override:
         return override
 
+    # Paragraph 1: What we're building (from strategy memory)
     theme = (
         db.query(StrategicTheme)
         .filter(StrategicTheme.status == ThemeStatus.ACTIVE)
@@ -139,68 +164,202 @@ def _build_narrative_strategic_objective(
         .first()
     )
     if theme and theme.description:
-        return theme.description
+        para1 = theme.description
+    else:
+        para1 = STRATEGY_MEMORY
 
-    return DEFAULT_STRATEGIC_OBJECTIVE
-
-
-def _build_narrative_progress(db: Session, leads: list[PlatformLead]) -> str:
-    """Build the *Progress This Week* narrative paragraph.
-
-    Summarises recent activity across active initiatives and open commitments,
-    attributing progress to the relevant platform leads.
-    """
+    # Paragraph 2: How this week fits into broader strategy
     active_initiatives = (
         db.query(Initiative)
         .filter(Initiative.status == InitiativeStatus.ACTIVE)
         .order_by(Initiative.created_at.asc())
         .all()
     )
-
-    all_open = (
-        db.query(Commitment)
-        .filter(Commitment.status != CommitmentStatus.CLOSED)
-        .all()
-    )
-    open_by_id = {str(c.id): c for c in all_open}
-
-    init_titles: dict[str, str] = {}
-    for init in active_initiatives:
-        init_titles[str(init.id)] = init.title
-
-    total_open = len(all_open)
     active_count = len(active_initiatives)
 
-    snippets: list[str] = []
-    for lead in leads:
-        lead_init_ids = _lead_initiative_ids(lead)
-        owned = [init_titles[iid] for iid in lead_init_ids if iid in init_titles]
-        if owned:
-            snippets.append(
-                f"{lead.name} ({lead.role}) is driving {', '.join(owned[:2])}"
+    # Map initiatives to pillars by keyword matching
+    pillar_inits: dict[str, list[str]] = {p: [] for p in PLATFORM_PILLARS}
+    for init in active_initiatives:
+        title_lower = init.title.lower()
+        for pillar in PLATFORM_PILLARS:
+            if any(kw in title_lower for kw in pillar.lower().split()):
+                pillar_inits[pillar].append(init.title)
+                break
+
+    active_pillars = [p for p, inits in pillar_inits.items() if inits]
+    if active_pillars:
+        para2 = (
+            f"This week, the platform team is advancing work across "
+            f"{len(active_pillars)} of the four platform pillars: "
+            f"{', '.join(active_pillars)}. "
+            f"There are {active_count} active initiatives driving progress "
+            f"toward the AI-native engineering platform."
+        )
+    else:
+        para2 = (
+            f"The platform team is executing across {active_count} active "
+            f"initiatives this week, continuing to build toward the four "
+            f"architectural pillars: {', '.join(PLATFORM_PILLARS)}."
+        )
+
+    return f"{para1}\n\n{para2}"
+
+
+def _build_narrative_progress(db: Session, leads: list[PlatformLead]) -> str:
+    """Build the *Progress This Week* section.
+
+    Highlights 1-3 meaningful milestones from completed work or significant
+    platform progress. Written in narrative form, focused on outcomes rather
+    than activities. Includes one major platform milestone.
+    """
+    # Recently closed commitments (completed work)
+    recently_closed = (
+        db.query(Commitment)
+        .filter(Commitment.status == CommitmentStatus.CLOSED)
+        .order_by(Commitment.closed_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    active_initiatives = (
+        db.query(Initiative)
+        .filter(Initiative.status == InitiativeStatus.ACTIVE)
+        .all()
+    )
+    init_map = {str(i.id): i for i in active_initiatives}
+
+    # Build milestone narratives from completed work
+    milestones: list[str] = []
+    for commitment in recently_closed[:3]:
+        # Try to connect to an initiative/pillar
+        links = (
+            db.query(InitiativeCommitmentLink)
+            .filter(InitiativeCommitmentLink.commitment_id == commitment.id)
+            .all()
+        )
+        init_name = None
+        for link in links:
+            init = init_map.get(str(link.initiative_id))
+            if init:
+                init_name = init.title
+                break
+
+        if init_name:
+            milestones.append(
+                f"{commitment.title} was completed as part of the {init_name} "
+                f"initiative, advancing the platform's capabilities."
+            )
+        else:
+            milestones.append(
+                f"{commitment.title} was completed, contributing to overall "
+                f"platform execution progress."
             )
 
-    progress_text = (
-        f"The platform team is tracking {total_open} open commitments across "
-        f"{active_count} active initiatives this week. "
-    )
-    if snippets:
-        progress_text += ". ".join(snippets[:3]) + ". "
-    progress_text += (
-        "The focus remains on converting planned work into measurable outcomes "
-        "that advance the strategic objective."
-    )
-    return progress_text
+    if not milestones:
+        # No recently closed items — describe active work momentum
+        all_open = (
+            db.query(Commitment)
+            .filter(Commitment.status != CommitmentStatus.CLOSED)
+            .count()
+        )
+        milestones.append(
+            f"The platform team is actively executing across {all_open} open "
+            f"commitments, building momentum toward key platform milestones."
+        )
+
+    return " ".join(milestones)
 
 
-def _build_narrative_week_ahead(db: Session) -> str:
-    """Build the *Week Ahead* narrative paragraph.
+def _build_narrative_why_it_matters(db: Session) -> str:
+    """Build the *Why It Matters* section.
 
-    Highlights items due in the next seven days and top-priority commitments.
+    Explains why the progress from this week is strategically important.
+    Connects progress to platform strategy. Focuses on capabilities being
+    unlocked rather than tasks completed.
     """
+    active_initiatives = (
+        db.query(Initiative)
+        .filter(Initiative.status == InitiativeStatus.ACTIVE)
+        .all()
+    )
+
+    recently_closed = (
+        db.query(Commitment)
+        .filter(Commitment.status == CommitmentStatus.CLOSED)
+        .order_by(Commitment.closed_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    # Identify which pillars are being advanced
+    pillar_activity: dict[str, int] = {p: 0 for p in PLATFORM_PILLARS}
+    for init in active_initiatives:
+        title_lower = init.title.lower()
+        for pillar in PLATFORM_PILLARS:
+            if any(kw in title_lower for kw in pillar.lower().split()):
+                pillar_activity[pillar] += 1
+                break
+
+    active_pillars = [p for p, count in pillar_activity.items() if count > 0]
+    closed_count = len(recently_closed)
+
+    if active_pillars and closed_count > 0:
+        text = (
+            f"This week's progress is strategically significant because it "
+            f"advances {len(active_pillars)} of the four platform pillars"
+        )
+        if len(active_pillars) <= 3:
+            text += f" ({', '.join(active_pillars)})"
+        text += (
+            f". The completion of {closed_count} commitment(s) represents "
+            f"tangible progress toward enabling AI-native development workflows "
+            f"and strengthening the platform architecture."
+        )
+    elif active_pillars:
+        text = (
+            f"Active work across {', '.join(active_pillars)} is building "
+            f"the foundation for AI-native development capabilities. Each "
+            f"initiative contributes to the broader goal of enabling intelligent "
+            f"agents to participate directly in the software development lifecycle."
+        )
+    else:
+        text = (
+            "The current execution focus is establishing the foundational "
+            "capabilities that will enable AI-native development workflows, "
+            "agent infrastructure, knowledge management, and data platform "
+            "integration across the engineering organization."
+        )
+
+    return text
+
+
+def _build_narrative_next_moves(db: Session) -> str:
+    """Build the *Next Platform Moves* section.
+
+    Describes the next stage of platform evolution, building on progress
+    made this week. Forward-looking and strategic.
+    """
+    # Look at top-priority open commitments for forward-looking moves
+    top_priority = (
+        db.query(Commitment)
+        .filter(
+            Commitment.status != CommitmentStatus.CLOSED,
+            Commitment.priority_order.isnot(None),
+        )
+        .order_by(Commitment.priority_order.asc())
+        .limit(3)
+        .all()
+    )
+
+    active_initiatives = (
+        db.query(Initiative)
+        .filter(Initiative.status == InitiativeStatus.ACTIVE)
+        .all()
+    )
+
+    # Upcoming due items
     now = datetime.now(timezone.utc)
     cutoff = now + timedelta(days=7)
-
     due_soon = (
         db.query(Commitment)
         .filter(
@@ -215,51 +374,59 @@ def _build_narrative_week_ahead(db: Session) -> str:
         if due_at <= cutoff:
             upcoming.append(c.title)
 
-    top_priority = (
-        db.query(Commitment)
-        .filter(
-            Commitment.status != CommitmentStatus.CLOSED,
-            Commitment.priority_order.isnot(None),
-        )
-        .order_by(Commitment.priority_order.asc())
-        .limit(3)
-        .all()
-    )
-    priority_titles = [c.title for c in top_priority]
-
     parts: list[str] = []
+
+    if top_priority:
+        priority_titles = [c.title for c in top_priority[:3]]
+        parts.append(
+            f"The next stage of platform evolution focuses on "
+            f"{', '.join(priority_titles)}. These represent the highest-priority "
+            f"moves that will advance the platform architecture."
+        )
+
+    if active_initiatives and not top_priority:
+        init_titles = [i.title for i in active_initiatives[:3]]
+        parts.append(
+            f"The platform will build on current momentum by advancing "
+            f"{', '.join(init_titles)}, extending the AI-native engineering "
+            f"capabilities across the organization."
+        )
+
     if upcoming:
         parts.append(
-            f"In the coming week, {len(upcoming)} deliverable(s) approach their "
-            f"target dates, including {', '.join(upcoming[:3])}"
+            f"{len(upcoming)} deliverable(s) approach their target dates in "
+            f"the coming week, requiring focused execution from the team."
         )
-    if priority_titles:
-        parts.append(
-            f"Top-priority items requiring attention are {', '.join(priority_titles[:3])}"
-        )
+
     if not parts:
         parts.append(
-            "The week ahead is focused on sustaining momentum across all "
-            "active workstreams and ensuring timely delivery of open commitments"
+            "The platform will continue to expand its AI-native engineering "
+            "capabilities, focusing on agent infrastructure maturity, "
+            "knowledge layer development, and data platform integration."
         )
 
-    text = ". ".join(parts) + ". "
-    text += (
-        "Leadership should ensure blockers are surfaced early and that "
-        "cross-functional dependencies are resolved before end of week."
-    )
-    return text
+    return " ".join(parts)
 
 
-def _build_narrative_ownership(db: Session, leads: list[PlatformLead]) -> str:
-    """Build the *Ownership & Execution* narrative paragraph.
+def _build_narrative_leadership_execution(
+    db: Session, leads: list[PlatformLead]
+) -> str:
+    """Build the *Leadership Execution* section.
 
-    One sentence per active platform lead describing their execution focus.
+    Each leader receives exactly three commitments. Each commitment includes
+    the task and a short explanation of why it matters strategically.
+
+    Format:
+        Leader Name
+
+        Task
+        Why it matters: explanation
     """
     if not leads:
         return (
-            "Platform ownership is under review. Leadership roles will be "
-            "confirmed and published once the organisational structure is finalised."
+            "Leadership execution assignments are pending. Roles will be "
+            "confirmed and commitments assigned once the team structure "
+            "is finalized."
         )
 
     active_initiatives = (
@@ -269,65 +436,99 @@ def _build_narrative_ownership(db: Session, leads: list[PlatformLead]) -> str:
     )
     init_map = {str(i.id): i for i in active_initiatives}
 
-    sentences: list[str] = []
-    for lead in leads:
-        init_ids = _lead_initiative_ids(lead)
-        owned_titles = [init_map[iid].title for iid in init_ids if iid in init_map]
-        if owned_titles:
-            sentences.append(
-                f"{lead.name}, {lead.role}, owns execution on "
-                f"{', '.join(owned_titles[:2])} with a focus on {lead.focus_area}"
-            )
-        else:
-            sentences.append(
-                f"{lead.name}, {lead.role}, is focused on {lead.focus_area}"
-            )
-
-    text = ". ".join(sentences) + ". "
-    text += (
-        "Each lead is accountable for weekly progress against their assigned "
-        "initiatives and is expected to flag risks early."
-    )
-    return text
-
-
-def _build_narrative_success_criteria(db: Session) -> str:
-    """Build the *Success Criteria* narrative paragraph.
-
-    Derives criteria from active initiatives and top-priority commitments.
-    """
-    active_count = (
-        db.query(Initiative)
-        .filter(Initiative.status == InitiativeStatus.ACTIVE)
-        .count()
-    )
-
-    top_priority = (
+    all_open = (
         db.query(Commitment)
-        .filter(
-            Commitment.status != CommitmentStatus.CLOSED,
-            Commitment.priority_order.isnot(None),
-        )
-        .order_by(Commitment.priority_order.asc())
-        .limit(3)
+        .filter(Commitment.status != CommitmentStatus.CLOSED)
+        .order_by(Commitment.priority_order.asc().nullslast(), Commitment.opened_at.asc())
         .all()
     )
-    priority_titles = [c.title for c in top_priority]
+    open_by_id = {str(c.id): c for c in all_open}
 
-    text = (
-        f"This week will be successful if progress is demonstrated across "
-        f"all {active_count} active initiatives. "
-    )
-    if priority_titles:
-        text += (
-            f"Particular emphasis is on advancing {', '.join(priority_titles[:3])}. "
-        )
-    text += (
-        "Outcomes should be measurable and each lead's contribution should "
-        "clearly advance the strategic objective. The emphasis must be on "
-        "outcomes rather than activity."
-    )
-    return text
+    # Map commitments to initiatives
+    all_links = db.query(InitiativeCommitmentLink).all()
+    commitment_init: dict[str, str] = {}
+    for link in all_links:
+        cid = str(link.commitment_id)
+        iid = str(link.initiative_id)
+        if iid in init_map:
+            commitment_init[cid] = init_map[iid].title
+
+    # Map initiatives to pillars for "why it matters"
+    init_pillar: dict[str, str] = {}
+    for init in active_initiatives:
+        title_lower = init.title.lower()
+        for pillar in PLATFORM_PILLARS:
+            if any(kw in title_lower for kw in pillar.lower().split()):
+                init_pillar[str(init.id)] = pillar
+                break
+
+    sections: list[str] = []
+    assigned_commitment_ids: set[str] = set()
+
+    for lead in leads:
+        lead_init_ids = _lead_initiative_ids(lead)
+
+        # Gather commitments for this lead from their initiatives
+        lead_commitments: list[Commitment] = []
+        for iid in lead_init_ids:
+            init_links = (
+                db.query(InitiativeCommitmentLink)
+                .filter(InitiativeCommitmentLink.initiative_id == iid)
+                .all()
+            )
+            for link in init_links:
+                cid = str(link.commitment_id)
+                if cid in open_by_id and cid not in assigned_commitment_ids:
+                    lead_commitments.append(open_by_id[cid])
+                    assigned_commitment_ids.add(cid)
+
+        # If not enough from initiatives, match by focus area keywords
+        if len(lead_commitments) < 3:
+            focus_keywords = [kw.strip().lower() for kw in lead.focus_area.split(",")]
+            for c in all_open:
+                cid = str(c.id)
+                if cid in assigned_commitment_ids:
+                    continue
+                if any(kw in c.title.lower() for kw in focus_keywords):
+                    lead_commitments.append(c)
+                    assigned_commitment_ids.add(cid)
+                if len(lead_commitments) >= 3:
+                    break
+
+        # Limit to exactly 3
+        lead_commitments = lead_commitments[:3]
+
+        # Build the section for this lead
+        lead_lines = [f"**{lead.name}**", ""]
+        for commitment in lead_commitments:
+            cid = str(commitment.id)
+            init_name = commitment_init.get(cid, "")
+            # Generate "why it matters" based on initiative/pillar connection
+            if init_name:
+                why = (
+                    f"Advances the {init_name} initiative, contributing to "
+                    f"the platform's strategic execution."
+                )
+            else:
+                why = (
+                    f"Strengthens platform execution and supports progress "
+                    f"toward the AI-native engineering architecture."
+                )
+            lead_lines.append(commitment.title)
+            lead_lines.append(f"Why it matters: {why}")
+            lead_lines.append("")
+
+        if not lead_commitments:
+            lead_lines.append(f"Focused on {lead.focus_area}")
+            lead_lines.append(
+                f"Why it matters: Ensures continued progress on "
+                f"{lead.focus_area.lower()} capabilities."
+            )
+            lead_lines.append("")
+
+        sections.append("\n".join(lead_lines))
+
+    return "\n".join(sections)
 
 
 # ---------------------------------------------------------------------------
@@ -465,17 +666,24 @@ def generate_memo(
     All leadership roles are resolved dynamically from the platform_leads
     table.  Content is stored in the existing LeadershipMemo columns as
     JSON where needed.
+
+    Column mapping to new sections:
+      strategic_objective  -> Strategic Direction
+      progress_summary     -> Progress This Week
+      focus_next_week      -> Why It Matters (JSON string)
+      success_criteria     -> Next Platform Moves (JSON string)
+      lead_updates         -> Leadership Execution (JSON object)
     """
     leads = _active_leads(db)
     snapshot = _gather_dashboard_snapshot(db)
     lead_updates = _build_lead_updates(db)
 
-    # Build narrative sections
-    obj_text = _build_narrative_strategic_objective(db, override=strategic_objective)
+    # Build narrative sections (new 5-section structure)
+    direction_text = _build_narrative_strategic_direction(db, override=strategic_objective)
     progress_text = _build_narrative_progress(db, leads)
-    week_ahead_text = _build_narrative_week_ahead(db)
-    ownership_text = _build_narrative_ownership(db, leads)
-    criteria_text = _build_narrative_success_criteria(db)
+    why_text = _build_narrative_why_it_matters(db)
+    next_moves_text = _build_narrative_next_moves(db)
+    execution_text = _build_narrative_leadership_execution(db, leads)
 
     # Audience = all active leads
     audience = [ld.name for ld in leads] if leads else []
@@ -485,15 +693,19 @@ def generate_memo(
         week_start_date=_week_start(),
         author=author,
         status=MemoStatus.DRAFT,
-        strategic_objective=obj_text,
-        current_priorities=json.dumps([]),  # replaced by narrative progress
+        strategic_objective=direction_text,
+        current_priorities=json.dumps([]),
         progress_summary=progress_text,
-        focus_next_week=json.dumps(week_ahead_text),
-        success_criteria=json.dumps(criteria_text),
+        focus_next_week=json.dumps(why_text),
+        success_criteria=json.dumps(next_moves_text),
         lead_updates=json.dumps(lead_updates),
         dashboard_snapshot=json.dumps(snapshot),
         audience=json.dumps(audience),
     )
+    # Store leadership execution text in lead_updates alongside legacy data
+    lead_updates["_execution_text"] = execution_text
+    memo.lead_updates = json.dumps(lead_updates)
+
     db.add(memo)
     db.commit()
     db.refresh(memo)
@@ -509,47 +721,40 @@ def format_memo_markdown(memo: LeadershipMemo) -> str:
     """Render a memo as a Markdown document using narrative paragraphs.
 
     Section order:
-      1. Strategic Objective
+      1. Strategic Direction
       2. Progress This Week
-      3. Week Ahead
-      4. Ownership & Execution
-      5. Success Criteria
+      3. Why It Matters
+      4. Next Platform Moves
+      5. Leadership Execution
 
-    No bullet lists.  Target 350-500 words.
+    Target 600-800 words.
     """
     audience = _parse_json_field(memo.audience, [])
     lead_updates = _parse_json_field(memo.lead_updates, {})
 
     # Unpack narrative fields (stored as plain text or JSON strings)
     progress_text = memo.progress_summary or ""
-    week_ahead_text = _parse_json_field(memo.focus_next_week, "")
-    if isinstance(week_ahead_text, list):
-        week_ahead_text = ", ".join(week_ahead_text)
-    criteria_text = _parse_json_field(memo.success_criteria, "")
-    if isinstance(criteria_text, list):
-        criteria_text = ", ".join(criteria_text)
+    why_text = _parse_json_field(memo.focus_next_week, "")
+    if isinstance(why_text, list):
+        why_text = ", ".join(why_text)
+    next_moves_text = _parse_json_field(memo.success_criteria, "")
+    if isinstance(next_moves_text, list):
+        next_moves_text = ", ".join(next_moves_text)
 
-    # Build ownership paragraph from lead_updates
-    ownership_sentences: list[str] = []
-    for name, info in lead_updates.items():
-        role = info.get("role", "")
-        focus = info.get("focus", "")
-        progress_items = info.get("progress", [])
-        if progress_items:
-            ownership_sentences.append(
-                f"{name}, {role}, is advancing work on "
-                f"{', '.join(progress_items[:2])} with a focus on {focus}"
-            )
-        else:
-            ownership_sentences.append(
-                f"{name}, {role}, is focused on {focus}"
-            )
-    ownership_text = ". ".join(ownership_sentences) + "." if ownership_sentences else ""
-    if ownership_sentences:
-        ownership_text += (
-            " Each lead is accountable for weekly progress against their assigned "
-            "initiatives and is expected to flag risks early."
-        )
+    # Extract leadership execution text from lead_updates
+    execution_text = ""
+    if isinstance(lead_updates, dict):
+        execution_text = lead_updates.pop("_execution_text", "")
+    if not execution_text:
+        # Fallback: build from lead_updates data
+        exec_sentences: list[str] = []
+        for name, info in lead_updates.items():
+            if not isinstance(info, dict):
+                continue
+            role = info.get("role", "")
+            focus = info.get("focus", "")
+            exec_sentences.append(f"{name}, {role}, is focused on {focus}")
+        execution_text = ". ".join(exec_sentences) + "." if exec_sentences else ""
 
     date_str = memo.week_start_date.strftime("%B %-d, %Y")
     status_val = memo.status.value if hasattr(memo.status, "value") else memo.status
@@ -557,12 +762,11 @@ def format_memo_markdown(memo: LeadershipMemo) -> str:
     lines: list[str] = [
         "# AI Platform Weekly Leadership Memo",
         "",
-        f"**To:** {', '.join(audience) if audience else 'Leadership Team'}",
+        f"**Week Of:** {date_str}",
         f"**From:** {memo.author or 'Leadership'}",
-        f"**Date:** {date_str}",
         f"**Status:** {status_val}",
         "",
-        "## Strategic Objective",
+        "## Strategic Direction",
         "",
         memo.strategic_objective or DEFAULT_STRATEGIC_OBJECTIVE,
         "",
@@ -570,21 +774,17 @@ def format_memo_markdown(memo: LeadershipMemo) -> str:
         "",
         progress_text,
         "",
-        "## Week Ahead",
+        "## Why It Matters",
         "",
-        week_ahead_text if isinstance(week_ahead_text, str) else str(week_ahead_text),
+        why_text if isinstance(why_text, str) else str(why_text),
         "",
-        "## Ownership & Execution",
+        "## Next Platform Moves",
         "",
-        ownership_text,
+        next_moves_text if isinstance(next_moves_text, str) else str(next_moves_text),
         "",
-        "## Success Criteria",
+        "## Leadership Execution",
         "",
-        criteria_text if isinstance(criteria_text, str) else str(criteria_text),
-        "",
-        "---",
-        "",
-        "*The emphasis should be on outcomes rather than activity.*",
+        execution_text if isinstance(execution_text, str) else str(execution_text),
     ]
 
     return "\n".join(lines)
@@ -721,8 +921,8 @@ def send_memo_email(
     body = (
         f"Please find attached the AI Platform Weekly Leadership Memo for the "
         f"week of {date_str}.\n\n"
-        f"This memo covers our strategic objective, progress this week, "
-        f"the week ahead, ownership and execution updates, and success criteria.\n\n"
+        f"This memo covers our strategic direction, progress this week, "
+        f"why it matters, next platform moves, and leadership execution.\n\n"
         f"Please review and reach out with any questions or feedback.\n\n"
         f"---\n\n{md_content}"
     )
@@ -934,7 +1134,6 @@ def _export_docx_fallback(memo: LeadershipMemo) -> bytes:
     from docx.shared import Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    audience = _parse_json_field(memo.audience, [])
     lead_updates = _parse_json_field(memo.lead_updates, {})
 
     doc = Document()
@@ -946,36 +1145,39 @@ def _export_docx_fallback(memo: LeadershipMemo) -> bytes:
     title_para = doc.add_heading("AI Platform Weekly Leadership Memo", level=0)
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    doc.add_paragraph(f"To: {', '.join(audience) if audience else 'Leadership Team'}")
+    doc.add_paragraph(f"Week Of: {memo.week_start_date.strftime('%B %-d, %Y')}")
     doc.add_paragraph(f"From: {memo.author or 'Leadership'}")
-    doc.add_paragraph(f"Date: {memo.week_start_date.strftime('%B %-d, %Y')}")
     status_val = memo.status.value if hasattr(memo.status, "value") else memo.status
     doc.add_paragraph(f"Status: {status_val}")
 
-    doc.add_heading("Strategic Objective", level=1)
+    doc.add_heading("Strategic Direction", level=1)
     doc.add_paragraph(memo.strategic_objective or DEFAULT_STRATEGIC_OBJECTIVE)
 
     doc.add_heading("Progress This Week", level=1)
     doc.add_paragraph(memo.progress_summary or "")
 
-    doc.add_heading("Week Ahead", level=1)
-    week_ahead = _parse_json_field(memo.focus_next_week, "")
-    doc.add_paragraph(week_ahead if isinstance(week_ahead, str) else str(week_ahead))
+    doc.add_heading("Why It Matters", level=1)
+    why_text = _parse_json_field(memo.focus_next_week, "")
+    doc.add_paragraph(why_text if isinstance(why_text, str) else str(why_text))
 
-    doc.add_heading("Ownership & Execution", level=1)
-    ownership_sentences: list[str] = []
-    for name, info in lead_updates.items():
-        role = info.get("role", "")
-        focus = info.get("focus", "")
-        ownership_sentences.append(f"{name}, {role}, is focused on {focus}")
-    doc.add_paragraph(". ".join(ownership_sentences) + "." if ownership_sentences else "")
+    doc.add_heading("Next Platform Moves", level=1)
+    next_moves = _parse_json_field(memo.success_criteria, "")
+    doc.add_paragraph(next_moves if isinstance(next_moves, str) else str(next_moves))
 
-    doc.add_heading("Success Criteria", level=1)
-    criteria = _parse_json_field(memo.success_criteria, "")
-    doc.add_paragraph(criteria if isinstance(criteria, str) else str(criteria))
-
-    footer = doc.add_paragraph("The emphasis should be on outcomes rather than activity.")
-    footer.italic = True
+    doc.add_heading("Leadership Execution", level=1)
+    execution_text = ""
+    if isinstance(lead_updates, dict):
+        execution_text = lead_updates.pop("_execution_text", "")
+    if not execution_text:
+        exec_sentences: list[str] = []
+        for name, info in lead_updates.items():
+            if not isinstance(info, dict):
+                continue
+            role = info.get("role", "")
+            focus = info.get("focus", "")
+            exec_sentences.append(f"{name}, {role}, is focused on {focus}")
+        execution_text = ". ".join(exec_sentences) + "." if exec_sentences else ""
+    doc.add_paragraph(execution_text)
 
     buf = io.BytesIO()
     doc.save(buf)

@@ -318,7 +318,7 @@ def test_render_memo(client):
     text = r2.text
     assert "AI Platform Weekly Leadership Memo" in text
     assert "**From:** Brian" in text
-    assert "Strategic Objective" in text
+    assert "Strategic Direction" in text
 
 
 def test_render_memo_not_found(client):
@@ -341,8 +341,8 @@ def test_render_memo_with_leads(client):
     r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
     assert r2.status_code == 200
     text = r2.text
-    assert "Platform Engineering" in text
     assert "Matteo" in text
+    assert "Infrastructure" in text
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +402,7 @@ def test_memo_end_to_end_flow(client):
     text = r.text
     assert "AI Platform Weekly Leadership Memo" in text
     assert "Brian" in text
-    assert "Deploy new CI pipeline" in text or "Strategic Objective" in text
+    assert "Deploy new CI pipeline" in text or "Strategic Direction" in text
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +537,7 @@ def test_export_md(client):
     # Verify markdown heading structure
     assert "# AI Platform Weekly Leadership Memo" in text
     assert "**From:** Brian" in text
-    assert "## Strategic Objective" in text
+    assert "## Strategic Direction" in text
     assert "**Status:** DRAFT" in text
 
 
@@ -553,7 +553,7 @@ def test_export_md_with_leads(client):
     r2 = client.get(f"/memos/export-md?memo_id={memo_id}", headers=HEADERS)
     assert r2.status_code == 200
     text = r2.text
-    assert "## Ownership & Execution" in text
+    assert "## Leadership Execution" in text
     assert "Matteo" in text
 
 
@@ -624,7 +624,7 @@ def test_export_docx_contains_content(client):
     full_text = "\n".join(p.text for p in doc.paragraphs)
     assert "AI Platform Weekly Leadership Memo" in full_text
     assert "Brian" in full_text
-    assert "Strategic Objective" in full_text
+    assert "Strategic Direction" in full_text
 
 
 # ---------------------------------------------------------------------------
@@ -670,7 +670,7 @@ def test_memo_slash_command_auto_generates(client):
     r = client.get("/memo", headers=HEADERS)
     assert r.status_code == 200
     assert "# AI Platform Weekly Leadership Memo" in r.text
-    assert "## Strategic Objective" in r.text
+    assert "## Strategic Direction" in r.text
 
 
 def test_memo_slash_command_returns_existing(client):
@@ -720,7 +720,7 @@ def test_export_requires_auth(client):
 # ---------------------------------------------------------------------------
 
 def test_memo_narrative_no_bullets(client):
-    """Memo content should use narrative paragraphs, not bullet lists."""
+    """Memo content should use narrative paragraphs, not bullet lists (except Leadership Execution)."""
     leads = [
         {"name": "Alice", "role": "Engineering", "focus_area": "Backend"},
         {"name": "Bob", "role": "Design", "focus_area": "UX"},
@@ -731,16 +731,18 @@ def test_memo_narrative_no_bullets(client):
 
     r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
     text = r2.text
-    # Narrative format: no bullet characters in section content
-    lines = text.split("\n")
-    content_lines = [l for l in lines if l.strip() and not l.startswith("#") and not l.startswith("**") and not l.startswith("---") and not l.startswith("*The emphasis")]
+    # Leadership Execution section uses bullets by design — exclude it
+    leadership_idx = text.find("## Leadership Execution")
+    check_text = text[:leadership_idx] if leadership_idx != -1 else text
+    lines = check_text.split("\n")
+    content_lines = [l for l in lines if l.strip() and not l.startswith("#") and not l.startswith("**") and not l.startswith("---")]
     for line in content_lines:
         assert not line.strip().startswith("- "), f"Found bullet in memo: {line}"
         assert not line.strip().startswith("* "), f"Found bullet in memo: {line}"
 
 
 def test_memo_narrative_section_order(client):
-    """Memo must have sections in strict order: Strategic Objective, Progress, Week Ahead, Ownership, Success Criteria."""
+    """Memo must have sections in strict order: Strategic Direction, Progress, Why It Matters, Next Platform Moves, Leadership Execution."""
     r = client.post("/memos/generate", json={"author": "Brian"}, headers=HEADERS)
     memo_id = r.json()["id"]
 
@@ -748,11 +750,11 @@ def test_memo_narrative_section_order(client):
     text = r2.text
 
     sections = [
-        "## Strategic Objective",
+        "## Strategic Direction",
         "## Progress This Week",
-        "## Week Ahead",
-        "## Ownership & Execution",
-        "## Success Criteria",
+        "## Why It Matters",
+        "## Next Platform Moves",
+        "## Leadership Execution",
     ]
     positions = [text.index(s) for s in sections]
     assert positions == sorted(positions), "Sections are not in the correct order"
@@ -766,10 +768,11 @@ def test_memo_narrative_has_paragraphs(client):
     r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
     text = r2.text
 
-    assert "## Strategic Objective" in text
+    assert "## Strategic Direction" in text
     assert "## Progress This Week" in text
-    assert "## Week Ahead" in text
-    assert "## Success Criteria" in text
+    assert "## Why It Matters" in text
+    assert "## Next Platform Moves" in text
+    assert "## Leadership Execution" in text
 
 
 def test_lead_email_field(client):
@@ -813,7 +816,7 @@ def test_memo_dynamic_leadership(client):
 
     r2 = client.get(f"/memos/render?memo_id={memo_id}", headers=HEADERS)
     assert "Zara" in r2.text
-    assert "Data Science" in r2.text
+    assert "ML Models" in r2.text
 
 
 def test_memo_response_text_fields(client):
