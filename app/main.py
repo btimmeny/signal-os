@@ -22,6 +22,7 @@ from app.schemas import (
     CommitmentResponse,
     CommitmentSetPriorityRequest,
     CommitmentUpdateRequest,
+    FridayUpdateResponse,
     InitiativeCreateRequest,
     InitiativeLinkRequest,
     InitiativeLinkResponse,
@@ -54,6 +55,7 @@ from app.schemas import (
 )
 from app.services import comments as comment_svc
 from app.services import commitments as commitment_svc
+from app.services import friday_update as friday_svc
 from app.services import initiative_links as init_link_svc
 from app.services import initiatives as initiative_svc
 from app.services import leadership_memos as memo_svc
@@ -897,6 +899,44 @@ def memos_export_docx(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="memo-{memo_id[:8]}.docx"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Friday Strategic Execution Update (Feature 020)
+# ---------------------------------------------------------------------------
+
+@app.post("/friday-update", response_model=FridayUpdateResponse)
+def friday_update_generate(db: Session = Depends(get_db)):
+    """Generate the Friday Strategic Execution Update.
+
+    AI AGENTS: When the user says "/friday-update", "generate friday update",
+    "weekly strategy update", or any variation, call this endpoint.
+    It extracts signals from the past 7 days, generates three narrative
+    options, computes a Strategy Confidence Score, and sends an email to Brian.
+    """
+    update = friday_svc.generate_friday_update(db, send_email=True)
+    email_body = friday_svc.compose_update_email(update)
+    return FridayUpdateResponse.from_orm_row(update, email_body=email_body)
+
+
+@app.get("/friday-update/latest", response_model=FridayUpdateResponse)
+def friday_update_latest(db: Session = Depends(get_db)):
+    """Get the most recent Friday update."""
+    update = friday_svc.get_latest_update(db)
+    if not update:
+        raise HTTPException(status_code=404, detail="No Friday updates found")
+    email_body = friday_svc.compose_update_email(update)
+    return FridayUpdateResponse.from_orm_row(update, email_body=email_body)
+
+
+@app.get("/friday-update/list", response_model=list[FridayUpdateResponse])
+def friday_update_list(
+    db: Session = Depends(get_db),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """List recent Friday updates."""
+    updates = friday_svc.list_updates(db, limit=limit)
+    return [FridayUpdateResponse.from_orm_row(u) for u in updates]
 
 
 # ---------------------------------------------------------------------------

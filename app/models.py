@@ -83,6 +83,11 @@ class MemoStatus(str, enum.Enum):
     SENT = "SENT"
 
 
+class UpdateStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+
+
 # ---------------------------------------------------------------------------
 # Commitment
 # ---------------------------------------------------------------------------
@@ -556,3 +561,59 @@ class LeadershipMemo(Base):
 
     def __repr__(self) -> str:
         return f"<LeadershipMemo {self.id} week={self.week_start_date} status={self.status}>"
+
+
+# ---------------------------------------------------------------------------
+# Weekly Strategy Update (Feature 020 — Friday Execution Update)
+# ---------------------------------------------------------------------------
+
+class WeeklyStrategyUpdate(Base):
+    __tablename__ = "weekly_strategy_updates"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    week_start_date = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    status = Column(
+        Enum(UpdateStatus, name="update_status", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=UpdateStatus.DRAFT,
+    )
+
+    # Three narrative drafts (JSON: {framing, strategic_objective, why, behavior, body})
+    narrative_options = Column(Text, nullable=True)  # JSON array of 3 narrative dicts
+    recommended_narrative = Column(Integer, nullable=True)  # 0, 1, or 2
+
+    # Strategy Confidence Score
+    confidence_score = Column(Integer, nullable=True)  # 0-100
+    confidence_trend = Column(String(32), nullable=True)  # "up", "down", "stable"
+    confidence_explanation = Column(Text, nullable=True)
+
+    # Score components (JSON: {execution, momentum, alignment, friction})
+    score_components = Column(Text, nullable=True)  # JSON object
+
+    # Strategic Narrative Continuity
+    narrative_continuity = Column(Text, nullable=True)
+
+    # Forwardable version (clean copy for Brian to forward)
+    forwardable_body = Column(Text, nullable=True)
+
+    # Signal snapshot (JSON: raw data used for generation)
+    signal_snapshot = Column(Text, nullable=True)  # JSON object
+
+    # Previous week reference for trend comparison
+    previous_update_id = Column(
+        Uuid,
+        ForeignKey("weekly_strategy_updates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<WeeklyStrategyUpdate {self.id} week={self.week_start_date} score={self.confidence_score}>"
