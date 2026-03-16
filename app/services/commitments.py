@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import or_
@@ -20,6 +20,8 @@ from app.models import (
     InitiativeCommitmentLink,
     InitiativeStatus,
     ObjectiveCommitmentLink,
+    Program,
+    ProgramStatus,
     StrategicObjective,
     StrategicTheme,
     ThemeStatus,
@@ -81,6 +83,14 @@ def open_commitment(
     source_snippet: Optional[str] = None,
     status: str = "OPEN",
     priority_order: Optional[int] = None,
+    initiative_id: Optional[str] = None,
+    program_id: Optional[str] = None,
+    sequence_order: Optional[int] = None,
+    depends_on_commitment_id: Optional[str] = None,
+    blocked_by_commitment_id: Optional[str] = None,
+    milestone_flag: Optional[int] = 0,
+    completed_this_week: Optional[int] = 0,
+    win_flag: Optional[int] = 0,
 ) -> Commitment:
     """Create a new commitment."""
     now = datetime.now(timezone.utc)
@@ -104,6 +114,14 @@ def open_commitment(
         source_snippet=source_snippet,
         status=CommitmentStatus(status),
         priority_order=priority_order,
+        initiative_id=uuid.UUID(initiative_id) if initiative_id else None,
+        program_id=uuid.UUID(program_id) if program_id else None,
+        sequence_order=sequence_order,
+        depends_on_commitment_id=uuid.UUID(depends_on_commitment_id) if depends_on_commitment_id else None,
+        blocked_by_commitment_id=uuid.UUID(blocked_by_commitment_id) if blocked_by_commitment_id else None,
+        milestone_flag=milestone_flag or 0,
+        completed_this_week=completed_this_week or 0,
+        win_flag=win_flag or 0,
         opened_at=now,
         last_touched_at=now,
     )
@@ -184,6 +202,9 @@ def update_commitment(
     if not c:
         return None
 
+    # UUID fields that need conversion
+    _uuid_fields = {"initiative_id", "program_id", "depends_on_commitment_id", "blocked_by_commitment_id"}
+
     for key, value in fields.items():
         if value is None:
             continue
@@ -195,6 +216,8 @@ def update_commitment(
             value = Urgency(value)
         elif key == "channel_type":
             value = ChannelType(value)
+        elif key in _uuid_fields:
+            value = uuid.UUID(value) if isinstance(value, str) else value
         elif key == "priority_order":
             old_pos = c.priority_order
             new_pos = value
@@ -484,13 +507,13 @@ def _task_line_suffix(c: Commitment) -> str:
     return f" ({_person_str(c)}, {_due_str(c)})"
 
 
-def _extract_priority_number(c: Commitment) -> int:
-    """Extract priority number from description like 'Priority 1.' Returns 0 if none."""
+def _extract_priority_number(c: Commitment) -> int | None:
+    """Extract priority number from description like 'Priority 1.' Returns None if none."""
     if c.description:
         m = _PRIORITY_RE.search(c.description)
         if m:
             return int(m.group(1))
-    return 0
+    return None
 
 
 def _sort_key(c: Commitment, priority_number: int = 0) -> tuple:
@@ -503,17 +526,41 @@ def _sort_key(c: Commitment, priority_number: int = 0) -> tuple:
     return (priority_number, _urgency_rank(c), due_sort, (c.title or "").lower())
 
 
+def _blocked_suffix(c: Commitment, all_by_id: dict[str, Commitment]) -> str:
+    """Return a blocked/depends suffix if the task has dependencies."""
+    parts: list[str] = []
+    if c.blocked_by_commitment_id:
+        bid = str(c.blocked_by_commitment_id)
+        blocker = all_by_id.get(bid)
+        if blocker and blocker.status != CommitmentStatus.CLOSED:
+            parts.append(f"BLOCKED by: {blocker.title}")
+    if c.depends_on_commitment_id:
+        did = str(c.depends_on_commitment_id)
+        dep = all_by_id.get(did)
+        if dep and dep.status != CommitmentStatus.CLOSED:
+            parts.append(f"waiting on: {dep.title}")
+    return f" [{'; '.join(parts)}]" if parts else ""
+
+
+def _pipeline_status(c: Commitment) -> str:
+    """Return pipeline position label if sequence_order is set."""
+    if c.sequence_order is not None:
+        return f" [Step {c.sequence_order}]"
+    return ""
+
+
 def format_dashboard_text(db: Session) -> str:
     """Return all non-CLOSED commitments as pre-formatted markdown text.
 
     The text is ready to display verbatim — no reformatting needed.
-    Hierarchy: Strategic Theme → Initiative → Task (Commitment)
 
-    Sections (in order):
-      1. Priority Execution — items whose description contains "Priority N."
-      2. Strategic Themes — grouped by theme, then by initiative, then tasks
-      3. Unthemed Initiatives — initiatives not linked to any theme
-      4. Everything Else — remaining open tasks not in the above sections
+    Five sections (Leadership Execution Dashboard):
+      1. Priority Execution — priority-ranked items (priority_order or "Priority N." description)
+      2. Needs Decision — tasks with status WAITING or blocked
+      3. Due Soon — tasks due within 7 days
+      4. Initiatives — Theme > Initiative > Program > Tasks hierarchy
+      5. Organization & Hiring — tasks with urgency ADMIN
+    Remaining tasks go to Everything Else.
     Each task appears on a single line with (person, due date).
     """
     all_open = (
@@ -525,15 +572,28 @@ def format_dashboard_text(db: Session) -> str:
     if not all_open:
         return "0 open tasks"
 
-    # Build set of commitment IDs linked to any ACTIVE initiative
+    all_by_id = {str(c.id): c for c in all_open}
+
+    # Load active initiatives
     active_initiatives = (
         db.query(Initiative)
         .filter(Initiative.status == InitiativeStatus.ACTIVE)
         .order_by(Initiative.created_at.asc())
         .all()
     )
+    init_map = {str(i.id): i for i in active_initiatives}
 
-    # Load active themes
+    # Load active programs
+    active_programs = (
+        db.query(Program)
+        .filter(Program.status == ProgramStatus.ACTIVE)
+        .order_by(Program.created_at.asc())
+        .all()
+    )
+    prog_map = {str(p.id): p for p in active_programs}
+
+    # Load themes for grouping
+    from app.models import StrategicTheme, ThemeStatus
     active_themes = (
         db.query(StrategicTheme)
         .filter(StrategicTheme.status == ThemeStatus.ACTIVE)
@@ -542,91 +602,228 @@ def format_dashboard_text(db: Session) -> str:
     )
     theme_map = {str(t.id): t for t in active_themes}
 
-    # Map: initiative_id -> list of linked open commitment objects
-    initiative_commitments: dict[str, list[Commitment]] = {}
-    linked_commitment_ids: set = set()
-
-    open_by_id = {str(c.id): c for c in all_open}
-
-    for init in active_initiatives:
-        links = (
-            db.query(InitiativeCommitmentLink)
-            .filter(InitiativeCommitmentLink.initiative_id == init.id)
-            .order_by(InitiativeCommitmentLink.created_at.asc())
-            .all()
-        )
-        grouped: list[Commitment] = []
-        for link in links:
-            cid = str(link.commitment_id)
-            if cid in open_by_id:
-                grouped.append(open_by_id[cid])
-                linked_commitment_ids.add(cid)
-        if grouped:
-            grouped.sort(key=lambda c: _sort_key(c))
-            initiative_commitments[str(init.id)] = grouped
-
-    # Categorise into priority vs everything else
-    priority_exec: list[tuple[int, Commitment]] = []  # (priority_number, commitment)
+    # Categorise tasks into sections (a task appears in the first matching section)
+    used_ids: set[str] = set()
+    top_focus: list[Commitment] = []
+    needs_decision: list[Commitment] = []
+    due_soon: list[Commitment] = []
+    org_hiring: list[Commitment] = []
+    workstream_tasks: list[Commitment] = []
     everything_else: list[Commitment] = []
 
+    now = datetime.now(timezone.utc)
+    seven_days = now + timedelta(days=7)
+
+    # Pass 1: Priority Execution — tasks with priority_order set OR "Priority N." in description
+    priority_candidates: list[tuple[int, Commitment]] = []
+    for c in all_open:
+        if c.priority_order is not None:
+            priority_candidates.append((c.priority_order, c))
+        else:
+            pnum = _extract_priority_number(c)
+            if pnum is not None:
+                priority_candidates.append((pnum, c))
+
+    priority_candidates.sort(key=lambda x: x[0])
+    for _, c in priority_candidates:
+        top_focus.append(c)
+        used_ids.add(str(c.id))
+
+    # Pass 2: Needs Decision — WAITING status or blocked
     for c in all_open:
         cid = str(c.id)
-        pnum = _extract_priority_number(c)
-        if pnum > 0:
-            priority_exec.append((pnum, c))
-        elif cid not in linked_commitment_ids:
-            everything_else.append(c)
+        if cid in used_ids:
+            continue
+        is_waiting = c.status == CommitmentStatus.WAITING
+        is_blocked = (
+            c.blocked_by_commitment_id is not None
+            and str(c.blocked_by_commitment_id) in all_by_id
+            and all_by_id[str(c.blocked_by_commitment_id)].status != CommitmentStatus.CLOSED
+        )
+        if is_waiting or is_blocked:
+            needs_decision.append(c)
+            used_ids.add(cid)
 
-    # Sort each section
-    priority_exec.sort(key=lambda pair: _sort_key(pair[1], pair[0]))
+    # Pass 3: Due Soon — due within 7 days
+    for c in all_open:
+        cid = str(c.id)
+        if cid in used_ids:
+            continue
+        if c.due_at:
+            due = c.due_at if c.due_at.tzinfo else c.due_at.replace(tzinfo=timezone.utc)
+            if due <= seven_days:
+                due_soon.append(c)
+                used_ids.add(cid)
+
+    # Pass 4: Organization & Hiring — urgency ADMIN
+    for c in all_open:
+        cid = str(c.id)
+        if cid in used_ids:
+            continue
+        u_val = c.urgency.value if c.urgency and hasattr(c.urgency, "value") else c.urgency
+        if u_val == "ADMIN":
+            org_hiring.append(c)
+            used_ids.add(cid)
+
+    # Pass 5: Everything remaining goes to Initiatives/Workstreams or Everything Else
+    for c in all_open:
+        cid = str(c.id)
+        if cid in used_ids:
+            continue
+        # If linked to an initiative (directly or via link table), it's a workstream task
+        if c.initiative_id or c.program_id:
+            workstream_tasks.append(c)
+            used_ids.add(cid)
+
+    # Also check InitiativeCommitmentLink for tasks not yet assigned
+    remaining_ids = {str(c.id) for c in all_open if str(c.id) not in used_ids}
+    if remaining_ids:
+        links = (
+            db.query(InitiativeCommitmentLink)
+            .filter(InitiativeCommitmentLink.commitment_id.in_(
+                [c.id for c in all_open if str(c.id) in remaining_ids]
+            ))
+            .all()
+        )
+        linked_ids = {str(link.commitment_id) for link in links}
+        for c in all_open:
+            cid = str(c.id)
+            if cid in used_ids:
+                continue
+            if cid in linked_ids:
+                workstream_tasks.append(c)
+                used_ids.add(cid)
+            else:
+                everything_else.append(c)
+                used_ids.add(cid)
+
+    # Sort sections
+    needs_decision.sort(key=lambda c: _sort_key(c))
+    due_soon.sort(key=lambda c: (c.due_at or datetime(9999, 12, 31, tzinfo=timezone.utc), (c.title or "").lower()))
+    org_hiring.sort(key=lambda c: _sort_key(c))
     everything_else.sort(key=lambda c: _sort_key(c))
 
     lines: list[str] = []
 
-    # Priority Execution
-    if priority_exec:
-        lines.append("Priority Execution")
-        for i, (pnum, c) in enumerate(priority_exec, 1):
-            lines.append(f"{i}. {c.title}{_task_line_suffix(c)}")
+    # Section 1: Priority Execution
+    if top_focus:
+        lines.append("\U0001f3af Priority Execution")
+        for i, c in enumerate(top_focus, 1):
+            suffix = _blocked_suffix(c, all_by_id)
+            lines.append(f"{i}. {c.title}{_task_line_suffix(c)}{suffix}")
         lines.append("")
 
-    # Group initiatives by theme
-    themed_initiatives: dict[str, list[Initiative]] = {}  # theme_id -> [initiatives]
-    unthemed_initiatives: list[Initiative] = []
-
-    for init in active_initiatives:
-        init_id = str(init.id)
-        if init_id not in initiative_commitments:
-            continue  # skip initiatives with no open tasks
-        if init.theme_id and str(init.theme_id) in theme_map:
-            themed_initiatives.setdefault(str(init.theme_id), []).append(init)
-        else:
-            unthemed_initiatives.append(init)
-
-    # Render themed initiatives grouped under each theme
-    for theme in active_themes:
-        theme_id = str(theme.id)
-        if theme_id not in themed_initiatives:
-            continue
-        lines.append(theme.title)
-        for init in themed_initiatives[theme_id]:
-            init_id = str(init.id)
-            lines.append(f"  {init.title}")
-            for c in initiative_commitments[init_id]:
-                lines.append(f"    \u2022 {c.title}{_task_line_suffix(c)}")
+    # Section 2: Needs Decision
+    if needs_decision:
+        lines.append("\u26a0\ufe0f Needs Decision")
+        for c in needs_decision:
+            suffix = _blocked_suffix(c, all_by_id)
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}{suffix}")
         lines.append("")
 
-    # Render unthemed initiatives
-    if unthemed_initiatives:
-        lines.append("Other Initiatives")
-        for init in unthemed_initiatives:
-            init_id = str(init.id)
-            lines.append(f"  {init.title}")
-            for c in initiative_commitments[init_id]:
-                lines.append(f"    \u2022 {c.title}{_task_line_suffix(c)}")
+    # Section 3: Due Soon
+    if due_soon:
+        lines.append("\U0001f525 Due Soon")
+        for c in due_soon:
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
         lines.append("")
 
-    # Everything Else
+    # Section 4: Initiatives — Theme > Initiative > Program > Tasks
+    if workstream_tasks:
+        lines.append("\U0001f6a7 Initiatives")
+
+        # Build initiative -> commitment mapping
+        init_prog_tasks: dict[str, dict[str, list[Commitment]]] = {}
+        unassigned_workstream: list[Commitment] = []
+
+        for c in workstream_tasks:
+            iid = str(c.initiative_id) if c.initiative_id else None
+            pid = str(c.program_id) if c.program_id else None
+
+            if not iid:
+                # Check link table
+                link = (
+                    db.query(InitiativeCommitmentLink)
+                    .filter(InitiativeCommitmentLink.commitment_id == c.id)
+                    .first()
+                )
+                if link:
+                    iid = str(link.initiative_id)
+
+            if iid:
+                if iid not in init_prog_tasks:
+                    init_prog_tasks[iid] = {}
+                prog_key = pid or "_none"
+                if prog_key not in init_prog_tasks[iid]:
+                    init_prog_tasks[iid][prog_key] = []
+                init_prog_tasks[iid][prog_key].append(c)
+            else:
+                unassigned_workstream.append(c)
+
+        # Group initiatives by theme
+        themed_inits: dict[str, list[str]] = {}  # theme_id -> [init_id, ...]
+        unthemed_inits: list[str] = []
+
+        for iid in init_prog_tasks:
+            init_obj = init_map.get(iid)
+            if init_obj and init_obj.theme_id and str(init_obj.theme_id) in theme_map:
+                tid = str(init_obj.theme_id)
+                if tid not in themed_inits:
+                    themed_inits[tid] = []
+                themed_inits[tid].append(iid)
+            else:
+                unthemed_inits.append(iid)
+
+        def _render_initiative(iid: str, indent: int = 2) -> None:
+            """Render an initiative and its programs/tasks."""
+            init_obj = init_map.get(iid)
+            init_title = init_obj.title if init_obj else "Unknown Initiative"
+            init_owner = f" ({init_obj.owner})" if init_obj and init_obj.owner else ""
+            lines.append(f"{' ' * indent}{init_title}{init_owner}")
+
+            prog_groups = init_prog_tasks[iid]
+            for prog_key, tasks in prog_groups.items():
+                tasks.sort(key=lambda c: (c.sequence_order or 9999, _sort_key(c)))
+                if prog_key != "_none":
+                    prog_obj = prog_map.get(prog_key)
+                    prog_title = prog_obj.title if prog_obj else "Unknown Program"
+                    prog_owner = f" ({prog_obj.owner})" if prog_obj and prog_obj.owner else ""
+                    lines.append(f"{' ' * (indent + 2)}{prog_title}{prog_owner}")
+                    for c in tasks:
+                        suffix = _blocked_suffix(c, all_by_id) + _pipeline_status(c)
+                        lines.append(f"{' ' * (indent + 4)}\u2022 {c.title}{_task_line_suffix(c)}{suffix}")
+                else:
+                    for c in tasks:
+                        suffix = _blocked_suffix(c, all_by_id) + _pipeline_status(c)
+                        lines.append(f"{' ' * (indent + 2)}\u2022 {c.title}{_task_line_suffix(c)}{suffix}")
+
+        # Render themed initiatives grouped under their theme
+        for theme in active_themes:
+            tid = str(theme.id)
+            if tid in themed_inits:
+                lines.append(f"  {theme.title}")
+                for iid in themed_inits[tid]:
+                    _render_initiative(iid, indent=4)
+
+        # Render unthemed initiatives under "Other Initiatives"
+        if unthemed_inits:
+            lines.append("  Other Initiatives")
+            for iid in unthemed_inits:
+                _render_initiative(iid, indent=4)
+
+        if unassigned_workstream:
+            for c in unassigned_workstream:
+                lines.append(f"  \u2022 {c.title}{_task_line_suffix(c)}")
+        lines.append("")
+
+    # Section 5: Organization & Hiring
+    if org_hiring:
+        lines.append("\U0001f331 Organization & Hiring")
+        for c in org_hiring:
+            lines.append(f"\u2022 {c.title}{_task_line_suffix(c)}")
+        lines.append("")
+
+    # Overflow: tasks that didn't fit any section
     if everything_else:
         lines.append("Everything Else")
         for c in everything_else:

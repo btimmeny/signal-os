@@ -44,6 +44,9 @@ from app.schemas import (
     InitiativeResponse,
     InitiativeSeedRequest,
     InitiativeUpdateRequest,
+    ProgramCreateRequest,
+    ProgramResponse,
+    ProgramUpdateRequest,
     MemoCreateRequest,
     MemoResponse,
     MemoUpdateRequest,
@@ -78,6 +81,7 @@ from app.services import objective_links as link_svc
 from app.services import objective_updates as obj_update_svc
 from app.services import objectives as objective_svc
 from app.services import platform_leads as lead_svc
+from app.services import programs as program_svc
 from app.services import reminders as reminder_svc
 from app.services import status_reports as report_svc
 from app.services import strategic_intelligence as intel_svc
@@ -150,6 +154,14 @@ def commitments_open(body: CommitmentOpenRequest, db: Session = Depends(get_db))
         source_snippet=body.source_snippet,
         status=body.status.value,
         priority_order=body.priority_order,
+        initiative_id=body.initiative_id,
+        program_id=body.program_id,
+        sequence_order=body.sequence_order,
+        depends_on_commitment_id=body.depends_on_commitment_id,
+        blocked_by_commitment_id=body.blocked_by_commitment_id,
+        milestone_flag=body.milestone_flag,
+        completed_this_week=body.completed_this_week,
+        win_flag=body.win_flag,
     )
     # Record strategic signal for task open event
     try:
@@ -437,6 +449,7 @@ def initiatives_create(body: InitiativeCreateRequest, db: Session = Depends(get_
         description=body.description,
         status=body.status.value,
         theme_id=body.theme_id,
+        owner=body.owner,
     )
     return InitiativeResponse.from_orm_row(init)
 
@@ -476,6 +489,124 @@ def initiatives_get(
     if not init:
         raise HTTPException(status_code=404, detail="Initiative not found")
     return InitiativeResponse.from_orm_row(init)
+
+
+# ---------------------------------------------------------------------------
+# Programs (Workstreams under Initiatives)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/programs/create", response_model=ProgramResponse)
+def programs_create(body: ProgramCreateRequest, db: Session = Depends(get_db)):
+    prog = program_svc.create_program(
+        db,
+        initiative_id=body.initiative_id,
+        title=body.title,
+        description=body.description,
+        owner=body.owner,
+        status=body.status.value,
+    )
+    return ProgramResponse.from_orm_row(prog)
+
+
+@app.post("/programs/update", response_model=ProgramResponse)
+def programs_update(body: ProgramUpdateRequest, db: Session = Depends(get_db)):
+    fields = body.model_dump(exclude={"program_id"}, exclude_none=True)
+    if "status" in fields and hasattr(fields["status"], "value"):
+        fields["status"] = fields["status"].value
+    prog = program_svc.update_program(db, program_id=body.program_id, **fields)
+    if not prog:
+        raise HTTPException(status_code=404, detail="Program not found")
+    return ProgramResponse.from_orm_row(prog)
+
+
+@app.get("/programs/list", response_model=list[ProgramResponse])
+def programs_list(
+    db: Session = Depends(get_db),
+    initiative_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    rows = program_svc.list_programs(db, initiative_id=initiative_id, status=status)
+    return [ProgramResponse.from_orm_row(p) for p in rows]
+
+
+@app.get("/programs/get", response_model=ProgramResponse)
+def programs_get(
+    program_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    prog = program_svc.get_program(db, program_id=program_id)
+    if not prog:
+        raise HTTPException(status_code=404, detail="Program not found")
+    return ProgramResponse.from_orm_row(prog)
+
+
+@app.post("/programs/seed")
+def programs_seed(db: Session = Depends(get_db)):
+    """Seed the 'Specification-Driven Development Platform' initiative with 4 programs.
+
+    Idempotent — skips if initiative or programs already exist.
+    """
+    from app.models import Initiative, InitiativeStatus, Program as ProgramModel, ProgramStatus as ProgramStatusModel
+    import uuid as _uuid
+
+    INIT_TITLE = "Specification-Driven Development Platform"
+    existing_init = db.query(Initiative).filter(Initiative.title == INIT_TITLE).first()
+    if not existing_init:
+        existing_init = Initiative(
+            id=_uuid.uuid4(),
+            title=INIT_TITLE,
+            description="Platform for specification-driven software development lifecycle",
+            status=InitiativeStatus.ACTIVE,
+            owner="Brian",
+        )
+        db.add(existing_init)
+        db.commit()
+        db.refresh(existing_init)
+
+    program_defs = [
+        ("Core Platform Build", "Build the foundational execution engine and API surface", "Brian"),
+        ("Leadership Intelligence Layer", "Strategic intelligence, signals, and execution confidence scoring", "Brian"),
+        ("Memo & Reporting System", "Weekly memos, Friday updates, and export capabilities", "Brian"),
+        ("ChatGPT Integration & UX", "OpenAPI schema, GPT Actions, and conversational UX", "Brian"),
+    ]
+
+    existing_titles = {
+        p.title.lower()
+        for p in db.query(ProgramModel).filter(
+            ProgramModel.initiative_id == existing_init.id
+        ).all()
+    }
+
+    created = []
+    for title, desc, owner in program_defs:
+        if title.lower() not in existing_titles:
+            prog = ProgramModel(
+                id=_uuid.uuid4(),
+                initiative_id=existing_init.id,
+                title=title,
+                description=desc,
+                owner=owner,
+                status=ProgramStatusModel.ACTIVE,
+            )
+            db.add(prog)
+            created.append(prog)
+
+    if created:
+        db.commit()
+        for p in created:
+            db.refresh(p)
+
+    return {
+        "initiative": {"id": str(existing_init.id), "title": existing_init.title},
+        "programs_created": len(created),
+        "programs": [
+            {"id": str(p.id), "title": p.title}
+            for p in db.query(ProgramModel).filter(
+                ProgramModel.initiative_id == existing_init.id
+            ).all()
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

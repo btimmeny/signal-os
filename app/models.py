@@ -63,6 +63,13 @@ class InitiativeStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+class ProgramStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    DEFERRED = "DEFERRED"
+    CANCELLED = "CANCELLED"
+
+
 class ObjectiveStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     COMPLETED = "COMPLETED"
@@ -156,8 +163,59 @@ class Commitment(Base):
     )
 
     # Strategic signal fields (Feature 021)
+    # Direct initiative/program links (Feature 023)
+    initiative_id = Column(
+        Uuid,
+        ForeignKey("initiatives.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    program_id = Column(
+        Uuid,
+        ForeignKey("programs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    sequence_order = Column(Integer, nullable=True)
+    depends_on_commitment_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    blocked_by_commitment_id = Column(
+        Uuid,
+        ForeignKey("commitments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    milestone_flag = Column(Integer, nullable=False, default=0)
+    completed_this_week = Column(Integer, nullable=False, default=0)
+    win_flag = Column(Integer, nullable=False, default=0)
+
     strategic_contribution_note = Column(Text, nullable=True)
     execution_impact_note = Column(Text, nullable=True)
+
+    initiative = relationship(
+        "Initiative",
+        back_populates="direct_commitments",
+        foreign_keys=[initiative_id],
+    )
+    program = relationship(
+        "Program",
+        back_populates="commitments",
+        foreign_keys=[program_id],
+    )
+    depends_on = relationship(
+        "Commitment",
+        foreign_keys=[depends_on_commitment_id],
+        remote_side="Commitment.id",
+        uselist=False,
+    )
+    blocked_by = relationship(
+        "Commitment",
+        foreign_keys=[blocked_by_commitment_id],
+        remote_side="Commitment.id",
+        uselist=False,
+    )
 
     strategic_signals = relationship(
         "StrategicSignal", back_populates="commitment", cascade="all, delete-orphan",
@@ -245,14 +303,76 @@ class Initiative(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    owner = Column(String(256), nullable=True)
+
     theme = relationship("StrategicTheme", back_populates="initiatives")
     commitment_links = relationship(
         "InitiativeCommitmentLink", back_populates="initiative", cascade="all, delete-orphan",
         lazy="select",
     )
+    programs = relationship(
+        "Program", back_populates="initiative", cascade="all, delete-orphan",
+        lazy="select",
+    )
+    direct_commitments = relationship(
+        "Commitment",
+        back_populates="initiative",
+        foreign_keys="Commitment.initiative_id",
+        lazy="select",
+    )
 
     def __repr__(self) -> str:
         return f"<Initiative {self.id} title={self.title!r} status={self.status}>"
+
+
+# ---------------------------------------------------------------------------
+# Program (workstream under an initiative)
+# ---------------------------------------------------------------------------
+
+class Program(Base):
+    __tablename__ = "programs"
+
+    id = Column(
+        Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    initiative_id = Column(
+        Uuid,
+        ForeignKey("initiatives.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title = Column(String(512), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    owner = Column(String(256), nullable=True)
+    status = Column(
+        Enum(ProgramStatus, name="program_status", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=ProgramStatus.ACTIVE,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    initiative = relationship("Initiative", back_populates="programs")
+    commitments = relationship(
+        "Commitment",
+        back_populates="program",
+        foreign_keys="Commitment.program_id",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Program {self.id} title={self.title!r} initiative={self.initiative_id}>"
 
 
 # ---------------------------------------------------------------------------
