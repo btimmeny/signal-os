@@ -19,11 +19,16 @@ info:
     or ANY task listing request, call GET /tasks ONLY.
     NEVER call /commitments/open or any other endpoint to
     build a task list. The /tasks response is pre-formatted
-    plain text. Display it EXACTLY as returned.
-    Do NOT reformat, add prefixes like 'Initiative:',
-    reorder, flatten sub-headers, or edit in any way.
-    Never, under any circumstance, return the results in
-    a copy box. NEVER fabricate tasks from memory.
+    plain text. Display it EXACTLY as returned — character
+    for character, line for line, with identical indentation,
+    grouping, section headers, and bracket tags like
+    [Step N] and [Architecture Group]. Do NOT reformat,
+    reorder, rename sections, merge groups, flatten the
+    hierarchy, move tasks between sections, add your own
+    headings, or edit the structure in any way. The section
+    order and task grouping is intentional and must not be
+    changed. Never return results in a copy box.
+    NEVER fabricate tasks from memory.
     Language: "wanna" = "want to".
     "So now what's open?" = list open commitments.
     "Now it's open." = reopen most recently referenced commitment.
@@ -621,9 +626,13 @@ paths:
       summary: Show all open tasks grouped and formatted
       description: >
         ALWAYS call this for /tasks, show tasks, what's open,
-        or ANY listing request. Response is pre-formatted text.
-        Display EXACTLY as returned — no changes, no prefixes,
-        no flattening. NEVER build a task list from other endpoints.
+        or ANY listing request. Response is pre-formatted text
+        with intentional structure: sections, indented groups,
+        and bracket tags like [Step N] [Group Name]. Display
+        EXACTLY as returned — same sections, same order, same
+        indentation, same grouping. Do NOT rename sections,
+        merge groups, reorder tasks, or restructure the output.
+        NEVER build a task list from other endpoints.
       responses:
         "200":
           description: Pre-formatted markdown task list
